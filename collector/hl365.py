@@ -13,6 +13,7 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
+from datetime import datetime, timezone
 
 from collector import clean, fetch
 from collector.config import load_config
@@ -54,6 +55,16 @@ def _to_iso(rfc822):
     try:
         return parsedate_to_datetime(rfc822).strftime('%Y-%m-%dT%H:%M:%SZ')
     except (TypeError, ValueError):
+        return None
+
+
+def _iso_utc(text):
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text).astimezone(
+            timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    except ValueError:
         return None
 
 
@@ -165,12 +176,10 @@ def parse_list_html(html):
         if not m or len(title) < 6 or m.group(1) in seen:
             continue
         seen.add(m.group(1))
-        # 时间取条目容器内的 datetime 属性
-        container = a.find_parent(['article', 'li', 'div'])
-        time_el = container.find(attrs={'datetime': True}) if container else None
-        published = None
-        if time_el:
-            published = _to_iso(time_el.get('datetime', ''))
+        # 时间取卡片内 schema 微数据 datePublished(Mirages 主题无 <time>/<meta>,
+        # 是 <span itemprop=datePublished content=ISO8601>,位于卡片 <a> 内部)
+        pm = a.find(attrs={'itemprop': 'datePublished'})
+        published = _iso_utc(pm.get('content', '')) if pm else None
         items.append({
             'article_key': m.group(1),
             'url': f'{SOURCE_URL_BASE}/archives/{m.group(1)}.html',
