@@ -1,6 +1,6 @@
 // melon-hub 前端:站点 Tab + 卡片流 + 全屏阅读抽屉
 (() => {
-  const state = { sources: [], current: '', offset: 0, limit: 50, loading: false };
+  const state = { sources: [], current: '', offset: 0, limit: 50, loading: false, view: 'cards', cache: [] };
 
   const $ = (id) => document.getElementById(id);
   const flow = $('card-flow'), meta = $('feed-meta'), loadMore = $('load-more');
@@ -60,6 +60,66 @@
     await loadArticles(true);
   }
 
+  // ---- 视图切换(卡片流 / 时间线) ----
+  document.querySelectorAll('.view-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.view-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.view = btn.dataset.view;
+      render();
+    });
+  });
+
+  function render() {
+    if (state.view === 'timeline') renderTimeline(state.cache);
+    else renderCards(state.cache);
+  }
+
+  function renderCards(articles) {
+    flow.className = 'card-flow';
+    flow.innerHTML = '';
+    for (const a of articles) flow.appendChild(renderCard(a));
+    if (!articles.length) flow.innerHTML = '';
+  }
+
+  function renderTimeline(articles) {
+    flow.className = 'timeline';
+    flow.innerHTML = '';
+    let lastDate = '';
+    for (const a of articles) {
+      const date = (a.published_at || '').slice(0, 10);
+      if (date !== lastDate) {
+        lastDate = date;
+        const marker = document.createElement('div');
+        marker.className = 'tl-date';
+        marker.dataset.source = a.source;
+        marker.innerHTML = `<span class="tl-dot"></span><span>${fmtDate(a.published_at)}</span>`;
+        flow.appendChild(marker);
+      }
+      const item = document.createElement('div');
+      item.className = 'tl-item';
+      item.dataset.source = a.source;
+      const time = document.createElement('span');
+      time.className = 'tl-time';
+      time.textContent = (a.published_at || '').slice(11, 16) || '--:--';
+      const body = document.createElement('div');
+      body.className = 'tl-body';
+      const title = document.createElement('div');
+      title.className = 'tl-title';
+      title.textContent = a.title;
+      const foot = document.createElement('div');
+      foot.className = 'tl-foot';
+      const tag = document.createElement('span');
+      tag.className = 'card-source';
+      tag.textContent = sourceName(a.source);
+      foot.appendChild(tag);
+      body.append(title, foot);
+      item.append(time, body);
+      item.addEventListener('click', () => openReader(a));
+      flow.appendChild(item);
+    }
+  }
+
   // ---- 卡片流 ----
   async function loadArticles(reset) {
     if (state.loading) return;
@@ -69,11 +129,15 @@
       const q = new URLSearchParams({ limit: state.limit, offset: state.offset });
       if (state.current) q.set('source', state.current);
       const data = await api('/api/articles?' + q);
-      if (reset) flow.innerHTML = '';
+      if (reset) {
+        state.cache = [];
+        flow.innerHTML = '';
+      }
+      state.cache = state.cache.concat(data.articles);
       meta.textContent = `共 ${data.total} 条${state.current ? ' · ' + sourceName(state.current) : ''}`;
-      for (const a of data.articles) flow.appendChild(renderCard(a));
+      render();
       loadMore.classList.toggle('hidden', data.total < state.limit);
-      if (!flow.children.length) {
+      if (!state.cache.length) {
         meta.textContent = '暂无数据 — 点击"刷新"拉取,或先运行采集器';
       }
     } catch (e) {
@@ -86,6 +150,7 @@
   function renderCard(a) {
     const card = document.createElement('div');
     card.className = 'card';
+    card.dataset.source = a.source;
 
     let cover;
     if (a.cover) {
@@ -135,6 +200,13 @@
     backdrop.classList.remove('hidden');
     $('reader-source').textContent = sourceName(a.source);
     $('reader-date').textContent = fmtDate(a.published_at);
+    const origin = $('reader-origin');
+    if (a.source_url) {
+      origin.href = a.source_url;
+      origin.classList.remove('hidden');
+    } else {
+      origin.classList.add('hidden');
+    }
     $('reader-title').textContent = a.title;
     const content = $('article-content');
     content.innerHTML = '<div class="reader-empty">载入正文中…</div>';

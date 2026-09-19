@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS articles (
   content_hash VARCHAR(64) DEFAULT NULL,
   content_object VARCHAR(255) DEFAULT NULL,
   images_json LONGTEXT,
+  thumb_object VARCHAR(255) DEFAULT NULL,
   status VARCHAR(16) NOT NULL DEFAULT 'ok',
   created_at VARCHAR(32) NOT NULL,
   updated_at VARCHAR(32) NOT NULL,
@@ -48,6 +49,7 @@ CREATE TABLE IF NOT EXISTS articles (
   content_hash TEXT,
   content_object TEXT,
   images_json TEXT NOT NULL DEFAULT '[]',
+  thumb_object TEXT,
   status TEXT NOT NULL DEFAULT 'ok',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -56,6 +58,12 @@ CREATE TABLE IF NOT EXISTS articles (
 CREATE INDEX IF NOT EXISTS idx_articles_source_pub
   ON articles(source, published_at DESC);
 """
+
+# 已存在的旧库补列(列已存在时报错忽略)
+_ALTER_THUMB = {
+    'mysql': 'ALTER TABLE articles ADD COLUMN thumb_object VARCHAR(255) DEFAULT NULL',
+    'sqlite': 'ALTER TABLE articles ADD COLUMN thumb_object TEXT',
+}
 
 
 def _now():
@@ -87,6 +95,11 @@ class Database:
         # WAL:容器内定时采集与宿主机浏览器采集可能跨进程并发读写
         self.conn.execute('PRAGMA journal_mode=WAL')
         self.conn.executescript(_SCHEMA_SQLITE)
+        try:
+            self.conn.execute(_ALTER_THUMB['sqlite'])
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            pass  # 列已存在
 
     def _init_mysql(self, url):
         import pymysql
@@ -105,6 +118,10 @@ class Database:
         self.conn = pymysql.connect(database=dbname, cursorclass=pymysql.cursors.DictCursor, **common)
         with self.conn.cursor() as c:
             c.execute(_SCHEMA_MYSQL)
+            try:
+                c.execute(_ALTER_THUMB['mysql'])
+            except Exception:
+                pass  # 列已存在
 
     def _exec(self, sql, args=()):
         """统一执行:pymysql 走 cursor,sqlite3 直接 execute,均返回可 fetch 的游标。"""
@@ -157,10 +174,20 @@ class Database:
                          updated_at=excluded.updated_at""", args)
                 self.conn.commit()
 
+    def set_thumb(self, source, article_key, thumb_object):
+        """仅更新缩略图对象 key(列表缩略图补抓用)。"""
+        with self._lock:
+            self._exec(
+                f'UPDATE articles SET thumb_object={self.ph} '
+                f'WHERE source={self.ph} AND article_key={self.ph}',
+                (thumb_object, source, article_key))
+            if not self._mysql:
+                self.conn.commit()
+
     def list_articles(self, source=None, limit=50, offset=0):
         """按发布时间倒序列出文章(供后端列表接口)。"""
         cols = ('SELECT source, article_key, url, title, summary, published_at,'
-                ' images_json, status FROM articles')
+                ' images_json, thumb_object, status FROM articles')
         if source:
             sql = cols + f' WHERE source={self.ph}'
             args = (source,)

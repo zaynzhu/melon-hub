@@ -4,6 +4,7 @@
 """
 import json
 import os
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
@@ -16,7 +17,26 @@ db = Database()
 store = ObjectStore()
 
 
-def _cover(images_json):
+def _source_url(row):
+    """源站原文链接:用当前配置的 home 域名拼文章路径——镜像换域名时
+    改 sites.yaml 即可让旧文章的原文链接跟着更新,不受采集时域名失效影响。"""
+    try:
+        site = load_config()['sites'].get(row['source'])
+        if not site:
+            return row['url']
+        return site['home'].rstrip('/') + urlparse(row['url']).path
+    except Exception:
+        return row['url']
+
+
+def _cover(row):
+    """列表封面:优先服务端直出的明文缩略图,回退正文首图。"""
+    if row.get('thumb_object'):
+        return store.public_url(row['thumb_object'])
+    return _cover_from_images(row.get('images_json'))
+
+
+def _cover_from_images(images_json):
     try:
         images = json.loads(images_json or '[]')
     except ValueError:
@@ -30,7 +50,8 @@ def _cover(images_json):
 @app.get('/api/sources')
 def sources():
     cfg = load_config()['sites']
-    return [{'id': sid, 'name': site['name']} for sid, site in cfg.items()]
+    return [{'id': sid, 'name': site['name'], 'home': site['home']}
+            for sid, site in cfg.items()]
 
 
 @app.get('/api/articles')
@@ -39,7 +60,9 @@ def articles(source: str = None, limit: int = Query(50, le=200), offset: int = 0
         raise HTTPException(404, f'未知站点:{source}')
     rows = db.list_articles(source, limit, offset)
     for r in rows:
-        r['cover'] = _cover(r.pop('images_json'))
+        r['cover'] = _cover(r)
+        r.pop('images_json', None)
+        r['source_url'] = _source_url(r)
     return {'total': len(rows), 'articles': rows}
 
 
@@ -56,6 +79,8 @@ def article_detail(source: str, article_key: str):
     base = store.public_url('').rstrip('/')
     payload['html'] = payload['html'].replace('src="', f'src="{base}/')
     payload.pop('images', None)
+    payload['source_url'] = _source_url(row)
+    payload['thumb'] = store.public_url(row['thumb_object']) if row.get('thumb_object') else ''
     return payload
 
 
