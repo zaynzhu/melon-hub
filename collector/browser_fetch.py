@@ -84,34 +84,33 @@ def fetch_rendered(url, wait_selector='.post-card', chunks=40000):
     """
     navigate(url, wait_selector=wait_selector)
     time.sleep(2)
-    meta = None
-    for attempt in range(3):  # 慢页面 evaluate 偶发超时,重试
-        try:
-            meta = eval_js(
-                '''(() => { const clone=document.documentElement.cloneNode(true);
+    set_js = '''(() => { const clone=document.documentElement.cloneNode(true);
                 clone.querySelectorAll('*').forEach(el=>{ const st=el.getAttribute('style');
                 if(st && st.indexOf('data:')>=0) el.setAttribute('style','');
                 for(const at of [...el.attributes]){ if(at.value.startsWith('data:'))
                 el.setAttribute(at.name,'[B64]'); } });
                 window.__mhHtml = clone.outerHTML;
                 return JSON.stringify({len: window.__mhHtml.length,
-                    title: document.title}); })()''')
-            break
-        except (BrowserError, requests.RequestException) as exc:
-            if attempt == 2:
-                raise BrowserError(f'页面渲染提取失败(重试 3 次): {url}: {exc}')
+                    title: document.title}); })()'''
+    last_err = None
+    for attempt in range(3):  # 慢页面 evaluate 偶发超时、CF 过盾后页面重载都会清掉窗口变量,整体重试
+        try:
+            meta = eval_js(set_js)
+            info = json.loads(meta)
+            parts = []
+            offset = 0
+            while offset < info['len']:
+                part = eval_js(f'window.__mhHtml.slice({offset}, {offset + chunks})')
+                parts.append(part)
+                offset += chunks
+                if offset < info['len']:
+                    time.sleep(2)
+            eval_js('window.__mhHtml = null')
+            return ''.join(parts), info['title']
+        except (BrowserError, requests.RequestException, json.JSONDecodeError) as exc:
+            last_err = exc
             time.sleep(4)
-    info = json.loads(meta)
-    parts = []
-    offset = 0
-    while offset < info['len']:
-        part = eval_js(f'window.__mhHtml.slice({offset}, {offset + chunks})')
-        parts.append(part)
-        offset += chunks
-        if offset < info['len']:
-            time.sleep(2)
-    eval_js('window.__mhHtml = null')
-    return ''.join(parts), info['title']
+    raise BrowserError(f'页面渲染提取失败(重试 3 次): {url}: {last_err}')
 
 
 def close_session():
