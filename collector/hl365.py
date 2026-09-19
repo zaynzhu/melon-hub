@@ -57,7 +57,7 @@ def _to_iso(rfc822):
         return None
 
 
-def download_images(urls, article_key, store):
+def download_images(urls, article_key, store, source=SOURCE):
     """下载图片入对象存储,key 由源 URL 哈希导出(重跑幂等)。
 
     返回 [{source_url, key}];单图失败不阻断采集,只记录告警。
@@ -65,7 +65,7 @@ def download_images(urls, article_key, store):
     images = []
     for url in urls:
         digest = hashlib.sha256(url.encode('utf-8')).hexdigest()[:12]
-        key = f'{SOURCE}/{article_key}/img-{digest}.{clean.img_ext(url)}'
+        key = f'{source}/{article_key}/img-{digest}.{clean.img_ext(url)}'
         if store.exists(key):
             images.append({'source_url': url, 'key': key})
             continue
@@ -73,7 +73,7 @@ def download_images(urls, article_key, store):
             resp = fetch.get(url)
             resp.raise_for_status()
             ext = clean.img_ext(url, resp.headers.get('Content-Type'))
-            key = f'{SOURCE}/{article_key}/img-{digest}.{ext}'
+            key = f'{source}/{article_key}/img-{digest}.{ext}'
             store.put(key, resp.content)
             images.append({'source_url': url, 'key': key})
         except Exception as exc:  # noqa: BLE001 单图失败继续

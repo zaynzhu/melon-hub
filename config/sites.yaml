@@ -38,7 +38,7 @@ sites:
       - https://wacg4.com/
     homeway_pages:
       - https://51cg1.com/homeway.html
-    parser: pending  # CF 盾,需真实浏览器渲染后确定 DOM 结构
+    parser: typecho  # 与 mrds 同套 Typecho 主题,渲染后 HTML 用共用解析器
 
   mrds:
     name: 每日大赛
@@ -48,4 +48,4 @@ sites:
       - https://www.mrds66.com/
     homeway_pages:
       - https://www.mrds66.com/ybml.html
-    parser: pending  # Vue SPA,需真实浏览器渲染后确定 DOM 结构
+    parser: typecho  # Vue SPA,真实浏览器渲染后与 51cg 同构(post-card/post-content)

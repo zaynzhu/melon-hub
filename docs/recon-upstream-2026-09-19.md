@@ -199,3 +199,34 @@ curl -sL 'https://www.mrds66.com/' -A "$UA" | grep -oE '<title>[^<]*</title>' | 
 - HTTP 层用 `curl -sL` + 桌面 Chrome UA（不重试、不加压，单次单请求，遵守 2 秒频控规范）。
 - 域名归属与官方渠道用 Tavily 搜索交叉验证，不轻信单一来源；同形域名需内容比对后才认定同源。
 - 真实渲染层（CF 后两站）留待 kimi-webbridge 实测：健康检查 → 打开页面 → 语义读取 → 保存渲染后 HTML → 关闭 session。
+
+## 9. 执行阶段实测更新（2026-09-19 下午，采集器开发时核验）
+
+> 以下为执行 agent 按本文档方案实施采集器时的增量实测，修正/补充前文结论。
+
+### 9.1 修正：hl365 feed 实际带全文
+
+- `content:encoded` **存在且每条都有**（前文 1.3"无 content:encoded 全文"不成立）。首条约 9.5KB 完整图文 HTML，0 个 script。
+- 图片真实地址在 `z-image-loader-url` 属性（懒加载，`src` 缺失），CDN `pic.hdhwqx.cn`。
+- 推广结构固定：头部"🔗 黑料不打烊最新地址"blockquote、"官方APP/QQ群"blockquote、尾部"获取最新网址"p——清洗按此剔除。
+- **采集实现**：hl365 仅靠 RSS 即可完成全文采集，文章页抓取无需实现；`/feed/?paged=2` 分页**无效**（返回同一页）。
+
+### 9.2 补充：51吃瓜实测（51cg1.com 本身即完整站）
+
+- kimi-webbridge 真实浏览器打开 `51cg1.com/homeway.html` 与 `51cg1.com/` 均**成功过 CF**（challenge 非持续触发）。
+- `51cg1.com` 本身是完整吃瓜站（Typecho 架构）：分类页 `/category/<slug>/`（wpcz 今日吃瓜等 12+ 分类），文章页 `/archives/<id>/`。
+- 列表 DOM：`a[href="/archives/<id>/"] > div.post-card(id="post-card-<id>")`，标题 `.post-card-title`，作者/时间/分类在 `.post-card-info`（格式"作者 • 2026 年 09 月 19 日 • 分类"）；**广告卡混在列表中**（`id="ad-card-N"`，外链域名），需排除。
+- 正文 DOM：`.post-content`；头部有 SEO 广告词块（`div.txt-apps`）+ "🔗 51吃瓜最新地址"blockquote；图片懒加载属性名**随机**（`data-xkrkllgl`，与 hl365 同方案不同名），真实 CDN `pic.ndhixj.cn`——解析器需按"属性值为图片 URL"通用识别。
+- ⚠️ 蹭名链确认：回家路页发布的 `51cgf16.com` 跳转 `www.pyjzrxdt.cc`（"51吃瓜官方入口"），内容为养生文章，与 cg51.com 同款蹭名模式。另发现线路池 `answer/appear/bus.wjkqrvcx.cc`（回家路页内链），未验证内容指纹。
+- 首页列表混有"热搜 HOT"栏目位卡片（无真实标题），解析需过滤。
+
+### 9.3 补充：每日大赛实测（mrds66）
+
+- `curl` 直连 `www.mrds66.com` 本次**未触发** CF challenge（200，SPA 壳）；`/api/im/webconfig` 等探测路径 404，隐藏 API 未深挖（按第 8 节纪律）。
+- 真实浏览器渲染成功：Vue SPA 注入数据后，DOM 与 51吃瓜**完全同构**（同套 Typecho 主题：`post-card`/`post-card-title`/`/archives/<id>/`/`.post-content`/`data-xkrkllgl`/`pic.ndhixj.cn`）。两站共用解析器已验证（离线样本见 `data/rendered/`）。
+
+### 9.4 实施产物索引
+
+- 共用解析器：`collector/typecho.py`；hl365 采集器：`collector/hl365.py`；浏览器驱动：`collector/browser_fetch.py`（kimi-webbridge，session=melon-hub-collect）。
+- 渲染样本存档（解析器回归用）：`data/rendered/wacg51-list-sample.html`、`data/rendered/mrds-content-sample.html`（base64 已替换为 [B64]）。
+- 渲染样本与 data/ 均不入 git。
