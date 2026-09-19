@@ -184,6 +184,16 @@ class Database:
             if not self._mysql:
                 self.conn.commit()
 
+    def set_published(self, source, article_key, published_at):
+        """仅更新发布时间(历史补齐的时间回填用)。"""
+        with self._lock:
+            self._exec(
+                f'UPDATE articles SET published_at={self.ph} '
+                f'WHERE source={self.ph} AND article_key={self.ph}',
+                (published_at, source, article_key))
+            if not self._mysql:
+                self.conn.commit()
+
     def list_articles(self, source=None, limit=50, offset=0):
         """按发布时间倒序列出文章(供后端列表接口)。"""
         cols = ('SELECT source, article_key, url, title, summary, published_at,'
