@@ -67,6 +67,14 @@ def navigate(url, wait_selector='.post-card', wait_seconds=25):
                 return result
         except BrowserError:
             pass
+        # 站点广告会 JS 跳走,发现当前页已不是目标 URL 时拉回来重试
+        try:
+            href = eval_js('location.href', timeout=10)
+            if isinstance(href, str) and not href.startswith(url.rstrip('/')):
+                _call('navigate', {'url': url}, timeout=60)
+                deadline = time.time() + wait_seconds
+        except (BrowserError, requests.RequestException):
+            pass
         time.sleep(2)
     raise BrowserError(f'等待 {wait_selector} 超时:{url}')
 
