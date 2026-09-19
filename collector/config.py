@@ -1,4 +1,4 @@
-"""加载 config/sites.yaml(项目根由 collector 包位置推导,避免依赖 cwd)。"""
+"""加载 .env(存在则注入环境变量,不覆盖已有值)与 config/sites.yaml。"""
 import os
 
 import yaml
@@ -13,6 +13,22 @@ def project_root():
 
 def data_dir():
     return os.environ.get('MELON_DATA_DIR') or os.path.join(_ROOT, 'data')
+
+
+def load_env():
+    env_path = os.path.join(_ROOT, '.env')
+    if not os.path.exists(env_path):
+        return
+    with open(env_path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, _, value = line.partition('=')
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+load_env()
 
 
 def load_config():
