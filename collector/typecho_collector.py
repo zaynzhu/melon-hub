@@ -58,7 +58,7 @@ def collect_articles(site_id, limit=12):
         url = row['url']
         try:
             html, _ = browser_fetch.fetch_rendered(url, wait_selector='.post-content')
-        except browser_fetch.BrowserError as exc:
+        except Exception as exc:  # noqa: BLE001 单篇失败(含 daemon 超时)不中断整批
             print(f'  [warn] 页面抓取失败,跳过 {url}: {exc}', file=sys.stderr)
             time.sleep(2)
             continue
