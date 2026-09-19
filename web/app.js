@@ -93,6 +93,12 @@
       cover.className = 'card-cover';
       cover.loading = 'lazy';
       cover.src = a.cover;
+      cover.addEventListener('error', () => {
+        const ph = document.createElement('div');
+        ph.className = 'card-cover placeholder';
+        ph.textContent = '🍈';
+        cover.replaceWith(ph);
+      }, { once: true });
     } else {
       cover = document.createElement('div');
       cover.className = 'card-cover placeholder';
@@ -139,6 +145,15 @@
     } catch (e) {
       content.innerHTML = `<div class="reader-empty">正文载入失败:${e.message}</div>`;
     }
+    // 源站图片加密/失效时优雅降级:破图替换为占位块
+    content.addEventListener('error', (e) => {
+      if (e.target.tagName === 'IMG') {
+        const ph = document.createElement('div');
+        ph.className = 'img-placeholder';
+        ph.textContent = '🖼 原站图片暂不可用';
+        e.target.replaceWith(ph);
+      }
+    }, true);
   }
 
   function closeReader() {

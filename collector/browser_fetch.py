@@ -10,7 +10,7 @@ import time
 import requests
 
 DAEMON = 'http://127.0.0.1:10086/command'
-SESSION = 'melon-hub-collect'
+SESSION = 'melon-hub-imgfix'
 
 
 class BrowserError(RuntimeError):
@@ -41,11 +41,16 @@ def ensure_ready():
 
 
 def navigate(url, wait_selector='.post-card', wait_seconds=25):
-    """打开页面并等待渲染出目标节点(SPA 需等数据注入)。"""
+    """打开页面并等待渲染出目标节点(SPA 需等数据注入)。
+
+    会话无标签页时新开专用 tab;已有则导航当前 tab(脚本全程独占)。
+    """
     result = None
     for attempt in range(3):  # 慢页面导航偶发超时,重试
         try:
-            result = _call('navigate', {'url': url}, timeout=60)
+            tabs = _call('list_tabs').get('tabs', [])
+            result = _call('navigate',
+                           {'url': url, 'newTab': not tabs}, timeout=60)
             break
         except requests.RequestException as exc:
             if attempt == 2:
