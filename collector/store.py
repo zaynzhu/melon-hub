@@ -53,6 +53,8 @@ class Database:
         self._lock = threading.Lock()
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        # WAL:容器内定时采集与宿主机浏览器采集可能跨进程并发读写
+        self.conn.execute('PRAGMA journal_mode=WAL')
         self.conn.executescript(_SCHEMA)
 
     def find(self, source, article_key):

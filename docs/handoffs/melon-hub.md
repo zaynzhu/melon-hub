@@ -44,11 +44,23 @@
 
 ## 进度与证据
 
-- **已产出**：无代码。本交接文档 + 上游侦察结论（见"定位与必读"）。
-- **已验证**（2026-09-19，curl + Tavily 实测）：hl365 可直连、`/feed` 结构与字段（内嵌上文）；51cg1/mrds66 被 CF 拦截（403/challenge）；mrds66 为 Vue SPA；三站源头候选与官方 TG/X 账号。
-- **未验证／未运行**：heiliao.com、51cg.fun、wacg4.com、mrds.fun 的可达性与内容结构；51cg/mrds 两站真实浏览器渲染后的 DOM 结构（解析器要见到真实渲染页面后才能写）；RustFS/数据库连通性。
-- **受阻**：无（凭据与 DB/RustFS 信息在实施时向用户索取即可）。
-- **已尝试且不宜重复**：hl365 首页靠正则硬解列表可行但不如 RSS 干净——直接用 feed；三站无公开 API 可省去"找隐藏 API"的尝试。
+> 2026-09-19 执行会话（按本文档"执行"角色接手）更新。一期主体已完成,剩 DB/RustFS 真实凭据接入与 Docker 化收尾。
+
+- **已产出**（git 5 个 commit,`8cc19c8`→`4d3f53d`）：
+  - 步骤 1 骨架：目录、`config/sites.yaml`（三站完整配置）、venv、`.env.example`。
+  - 步骤 2 hl365 采集器：`collector/hl365.py`（RSS 全文路线,**无需文章页抓取**,见侦察档案第 9.1 节修正）；`collector/fetch.py`（host 级 2s 频控）、`collector/clean.py`、`collector/store.py`（SQLite + 本地对象目录回退,S3/RustFS 分支已写待凭据验证）。
+  - 步骤 3 双站采集器：`collector/typecho.py`（51cg/mrds 共用解析器,两站同套 Typecho 主题）、`collector/browser_fetch.py`（kimi-webbridge 驱动）、`collector/wacg51.py` / `collector/mrds.py` 入口。
+  - 步骤 4 后端：`server/app.py`（FastAPI：sources / articles 列表 / 详情 / refresh 接口 + `/objects` 静态对象服务 + web 静态托管）。
+  - 步骤 5 前端：`web/`（Tab 三站切换 + 卡片流 + 全屏阅读抽屉,OLED 暗色,取 pixiu 设计语言）。
+- **已验证**：
+  - hl365：首轮入库 10 篇/148 对象；**连跑两遍幂等**（第二遍全 skip,DB 行数与对象数零变化）；清洗后零广告残留。
+  - 51cg：列表 20 条入库（过滤"热搜 HOT"位卡与 `ad-card` 广告卡）,正文 13 篇入库；每日大赛：列表 27 条,正文 8 篇,`--list-only` 重跑幂等（新增 0）。全程无登录墙/验证码。
+  - 后端：三站列表接口（均带封面）、详情接口（img src 正确指向对象并转可访问 URL）、图片 200、refresh 错误分支 400,均 curl 实测。
+  - 前端：隔离浏览器 DOM 断言——Tab 切换、卡片渲染、点卡开抽屉、正文 39 段 20 图、零推广残留、空站提示。（注：IAB 环境不渲染 `<img>` 位图,页面内 fetch 与 curl 证实资源 200,属验证环境限制,非代码缺陷。）
+  - 数据规模：`hl365 10/10、wacg51 20/13、mrds 27/8`（列表/正文,正文 pending 可增量补抓）。
+- **实施中发现并修正**：对象 key 前缀 bug（复用 `download_images` 时误用 hl365 前缀）,已修代码并迁移 175 个对象文件 + DB 记录；浏览路线 evaluate/navigate 偶发 45s/60s 超时,已加 3 次重试 + 单篇容错。
+- **未验证/待办**：真实数据库与 RustFS 未接入（**等用户提供凭据**,`.env.example` 已备好变量名；S3 分支代码未经真实端点测试）；**Docker 单容器化**（决策表新增项）进行中；二期项未动。
+- **受阻**：无。
 
 ## 剩余步骤与验收
 
