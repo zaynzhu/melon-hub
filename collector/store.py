@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
 from datetime import datetime, timezone
 
 from collector.config import data_dir, project_root
@@ -48,52 +49,55 @@ class Database:
                 raise SystemExit('MELON_DB_URL 指向非 SQLite 数据库,当前尚未实现该驱动,请先使用回退或扩展 collector/store.py')
             path = env_url[7:] if env_url else os.path.join(data_dir(), 'melon.db')
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        self.conn = sqlite3.connect(path)
+        # FastAPI 在线程池中调用,连接允许跨线程,写入用锁串行化
+        self._lock = threading.Lock()
+        self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(_SCHEMA)
 
     def find(self, source, article_key):
-        row = self.conn.execute(
-            'SELECT * FROM articles WHERE source=? AND article_key=?',
-            (source, article_key)).fetchone()
+        with self._lock:
+            row = self.conn.execute(
+                'SELECT * FROM articles WHERE source=? AND article_key=?',
+                (source, article_key)).fetchone()
         return dict(row) if row else None
 
     def upsert(self, source, article_key, url, title, summary, published_at,
                title_hash, content_hash, content_object, images, status='ok'):
         now = _now()
         images_json = json.dumps(images, ensure_ascii=False)
-        self.conn.execute(
-            """INSERT INTO articles
-               (source, article_key, url, title, summary, published_at,
-                title_hash, content_hash, content_object, images_json, status,
-                created_at, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(source, article_key) DO UPDATE SET
-                 url=excluded.url, title=excluded.title, summary=excluded.summary,
-                 published_at=excluded.published_at, title_hash=excluded.title_hash,
-                 content_hash=excluded.content_hash, content_object=excluded.content_object,
-                 images_json=excluded.images_json, status=excluded.status,
-                 updated_at=excluded.updated_at""",
-            (source, article_key, url, title, summary, published_at,
-             title_hash, content_hash, content_object, images_json, status,
-             now, now))
-        self.conn.commit()
-
+        with self._lock:
+            self.conn.execute(
+                """INSERT INTO articles
+                   (source, article_key, url, title, summary, published_at,
+                    title_hash, content_hash, content_object, images_json, status,
+                    created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(source, article_key) DO UPDATE SET
+                     url=excluded.url, title=excluded.title, summary=excluded.summary,
+                     published_at=excluded.published_at, title_hash=excluded.title_hash,
+                     content_hash=excluded.content_hash, content_object=excluded.content_object,
+                     images_json=excluded.images_json, status=excluded.status,
+                     updated_at=excluded.updated_at""",
+                (source, article_key, url, title, summary, published_at,
+                 title_hash, content_hash, content_object, images_json, status,
+                 now, now))
+            self.conn.commit()
 
     def list_articles(self, source=None, limit=50, offset=0):
         """按发布时间倒序列出文章(供后端列表接口)。"""
         if source:
-            rows = self.conn.execute(
-                'SELECT source, article_key, url, title, summary, published_at,'
-                ' images_json, status FROM articles WHERE source=?'
-                ' ORDER BY published_at DESC LIMIT ? OFFSET ?',
-                (source, limit, offset)).fetchall()
+            sql = ('SELECT source, article_key, url, title, summary, published_at,'
+                   ' images_json, status FROM articles WHERE source=?'
+                   ' ORDER BY published_at DESC LIMIT ? OFFSET ?')
+            args = (source, limit, offset)
         else:
-            rows = self.conn.execute(
-                'SELECT source, article_key, url, title, summary, published_at,'
-                ' images_json, status FROM articles'
-                ' ORDER BY published_at DESC LIMIT ? OFFSET ?',
-                (limit, offset)).fetchall()
+            sql = ('SELECT source, article_key, url, title, summary, published_at,'
+                   ' images_json, status FROM articles'
+                   ' ORDER BY published_at DESC LIMIT ? OFFSET ?')
+            args = (limit, offset)
+        with self._lock:
+            rows = self.conn.execute(sql, args).fetchall()
         return [dict(r) for r in rows]
 
     def close(self):
