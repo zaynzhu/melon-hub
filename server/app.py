@@ -30,20 +30,9 @@ def _source_url(row):
 
 
 def _cover(row):
-    """列表封面:优先服务端直出的明文缩略图,回退正文首图。"""
+    """列表封面:只用服务端直出的明文缩略图;正文密文图不可渲染,不作为封面。"""
     if row.get('thumb_object'):
         return store.public_url(row['thumb_object'])
-    return _cover_from_images(row.get('images_json'))
-
-
-def _cover_from_images(images_json):
-    try:
-        images = json.loads(images_json or '[]')
-    except ValueError:
-        return ''
-    for img in images:
-        if img.get('key'):
-            return store.public_url(img['key'])
     return ''
 
 
