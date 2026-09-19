@@ -283,3 +283,32 @@ body {
   .card-flow { grid-template-columns: 1fr 1fr; }
   .reader-drawer { width: 100%; }
 }
+
+/* ---- 三栏总览 ---- */
+.tri-view {
+  display: grid; gap: 14px; align-items: start;
+  grid-template-columns: repeat(3, 1fr);
+}
+.tri-col {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  padding: 10px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.tri-col-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 6px 9px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.tri-col-name { font-size: 13.5px; font-weight: 700; }
+.tri-col-count { font-size: 12px; color: var(--text-muted); }
+.tri-col[data-source="hl365"]  .tri-col-name { color: hsl(330, 81%, 60%); }
+.tri-col[data-source="wacg51"] .tri-col-name { color: hsl(38, 92%, 50%); }
+.tri-col[data-source="mrds"]   .tri-col-name { color: hsl(199, 89%, 60%); }
+.tri-col .card-cover { height: 96px; }
+.tri-col .card-summary { display: none; }
+
+@media (max-width: 980px) {
+  .tri-view { grid-template-columns: 1fr; }
+}

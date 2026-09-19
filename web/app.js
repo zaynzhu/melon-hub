@@ -52,6 +52,13 @@
 
   async function switchTab(source) {
     state.current = source;
+    // 三栏总览展示全部站点,点站点 Tab 时回到该站的卡片流
+    if (state.view === 'columns') {
+      state.view = 'cards';
+      document.querySelectorAll('.view-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.view === 'cards');
+      });
+    }
     document.querySelectorAll('.site-tab').forEach((b) => {
       b.classList.toggle('active', b.dataset.source === source);
     });
@@ -72,7 +79,46 @@
 
   function render() {
     if (state.view === 'timeline') renderTimeline(state.cache);
+    else if (state.view === 'columns') renderColumns();
     else renderCards(state.cache);
+  }
+
+  // ---- 三栏总览(三站并排,各取最新若干条) ----
+  const COLUMN_LIMIT = 10;
+
+  async function renderColumns() {
+    flow.className = 'tri-view';
+    loadMore.classList.add('hidden');
+    const sources = state.sources.filter((s) => s.id);
+    if (!sources.length) return;
+    flow.innerHTML = sources.map(() => (
+      '<div class="tri-col"><div class="card-skeleton"></div><div class="card-skeleton"></div></div>'
+    )).join('');
+    meta.textContent = `三栏总览 · 每站最新 ${COLUMN_LIMIT} 条 · 点卡片阅读`;
+    const lists = await Promise.all(sources.map((s) =>
+      api('/api/articles?' + new URLSearchParams({ source: s.id, limit: COLUMN_LIMIT, offset: 0 }))
+        .then((d) => d.articles)
+        .catch(() => [])
+    ));
+    if (state.view !== 'columns') return; // 载入期间用户已切走视图
+    flow.innerHTML = '';
+    sources.forEach((s, i) => {
+      const col = document.createElement('div');
+      col.className = 'tri-col';
+      col.dataset.source = s.id;
+      const head = document.createElement('div');
+      head.className = 'tri-col-header';
+      const name = document.createElement('span');
+      name.className = 'tri-col-name';
+      name.textContent = s.name;
+      const count = document.createElement('span');
+      count.className = 'tri-col-count';
+      count.textContent = `${lists[i].length} 条`;
+      head.append(name, count);
+      col.appendChild(head);
+      for (const a of lists[i]) col.appendChild(renderCard(a));
+      flow.appendChild(col);
+    });
   }
 
   function renderCards(articles) {
