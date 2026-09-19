@@ -44,23 +44,32 @@
 
 ## 进度与证据
 
-> 2026-09-19 执行会话（按本文档"执行"角色接手）更新。一期主体已完成,剩 DB/RustFS 真实凭据接入与 Docker 化收尾。
+> 2026-09-19 晚更新:MySQL + RustFS 已接入;图片问题已定位(源站加密链路自身失效),详见"图片加密问题"。
 
-- **已产出**（git 5 个 commit,`8cc19c8`→`4d3f53d`）：
+- **存储接入(已完成)**:`.env`(不入库)配置 MELON_DB_URL(mysql://…13306/melon_hub,自动建库)+ MELON_S3_*(RustFS 192.168.50.233:59100,桶 melon-hub 已建并设匿名读)。本地数据已迁移:`scripts/migrate_local_to_remote.py`(57 行→MySQL 零重复,344 对象→RustFS)。采集器/后端已全链路跑通 MySQL+RustFS(列表/详情/图片直链 200 实测)。
+- **图片加密问题(重要,未解决——源站自身问题)**:
+  - 三站图片 CDN(hdhwqx/ndhixj)对所有 HTTP 客户端返回**加密字节**(非图片),仅站内 z-image-loader JS 解密;GIF 明文例外。
+  - 站内解密链路依赖:年龄门确认 → IndexedDB 缓存 → Web Worker 下载;实测 worker 下载被 CORS 拦截、缓存库为空——**原站正文 JPEG 在用户 Chrome 里也渲染失败**(106 张仅 12 张 GIF 成功,nw=0 实测),即源站当前对所有人图片也是坏的。
+  - 曾成功抓到 1 张真图(过年龄门后视口图,277KB 真 JPEG,FF D8 魔数验证),证明"原站恢复正常时,`scripts/fix_images_browser.py`(借浏览器 blob 取图)路线可用;当前重跑无效(源站链路失效)。
+  - 已做前端优雅降级:封面/正文破图替换为占位,界面不受影响(截图确认)。
+  - 待验证假设:CDN 可能对本 IP 风控(当日数百次采集请求)。建议次日换网络(手机热点)开 hl365.com 看图片是否正常;若正常则换网络重跑修复脚本批量取真图。
+- **前端验证**:headless Chrome 截图,列表/卡片/来源/日期正常,占位降级生效(用户 Chrome 中建议直接看,内置浏览器不渲染位图)。
+- **受阻**:图片真图获取依赖源站解密链路恢复,非本项目代码问题。
+
+- **已产出**（git `8cc19c8`→`b138c5b`）：
   - 步骤 1 骨架：目录、`config/sites.yaml`（三站完整配置）、venv、`.env.example`。
-  - 步骤 2 hl365 采集器：`collector/hl365.py`（RSS 全文路线,**无需文章页抓取**,见侦察档案第 9.1 节修正）；`collector/fetch.py`（host 级 2s 频控）、`collector/clean.py`、`collector/store.py`（SQLite + 本地对象目录回退,S3/RustFS 分支已写待凭据验证）。
-  - 步骤 3 双站采集器：`collector/typecho.py`（51cg/mrds 共用解析器,两站同套 Typecho 主题）、`collector/browser_fetch.py`（kimi-webbridge 驱动）、`collector/wacg51.py` / `collector/mrds.py` 入口。
+  - 步骤 2 hl365 采集器：`collector/hl365.py`（RSS 全文路线,**无需文章页抓取**,见侦察档案第 9.1 节修正）；`collector/fetch.py`（host 级 2s 频控）、`collector/clean.py`、`collector/store.py`（MySQL + RustFS 双驱动,本地 SQLite/目录回退）。
+  - 步骤 3 双站采集器：`collector/typecho.py`（51cg/mrds 共用解析器,两站同套 Typecho 主题）、`collector/browser_fetch.py`（kimi-webbridge 驱动,独立会话 melon-hub-imgfix）、`collector/wacg51.py` / `collector/mrds.py` 入口。
   - 步骤 4 后端：`server/app.py`（FastAPI：sources / articles 列表 / 详情 / refresh 接口 + `/objects` 静态对象服务 + web 静态托管）。
-  - 步骤 5 前端：`web/`（Tab 三站切换 + 卡片流 + 全屏阅读抽屉,OLED 暗色,取 pixiu 设计语言）。
+  - 步骤 5 前端：`web/`（Tab 三站切换 + 卡片流 + 全屏阅读抽屉,OLED 暗色,取 pixiu 设计语言;破图优雅降级）。
+  - 迁移/修复脚本：`scripts/migrate_local_to_remote.py`、`scripts/fix_images_browser.py`。
+  - Docker：`Dockerfile`/`docker-entrypoint.sh`/`.dockerignore`（每小时 hl365 定时采集 + API,数据全落 `/data` 卷）——本机无 docker,**构建未验证**。
 - **已验证**：
-  - hl365：首轮入库 10 篇/148 对象；**连跑两遍幂等**（第二遍全 skip,DB 行数与对象数零变化）；清洗后零广告残留。
-  - 51cg：列表 20 条入库（过滤"热搜 HOT"位卡与 `ad-card` 广告卡）,正文 13 篇入库；每日大赛：列表 27 条,正文 8 篇,`--list-only` 重跑幂等（新增 0）。全程无登录墙/验证码。
-  - 后端：三站列表接口（均带封面）、详情接口（img src 正确指向对象并转可访问 URL）、图片 200、refresh 错误分支 400,均 curl 实测。
-  - 前端：隔离浏览器 DOM 断言——Tab 切换、卡片渲染、点卡开抽屉、正文 39 段 20 图、零推广残留、空站提示。（注：IAB 环境不渲染 `<img>` 位图,页面内 fetch 与 curl 证实资源 200,属验证环境限制,非代码缺陷。）
+  - hl365：首轮入库 10 篇/148 对象；连跑两遍幂等；清洗后零广告残留。51cg 列表 20/正文 13；每日大赛列表 27/正文 8,`--list-only` 幂等。全程无登录墙/验证码。
+  - MySQL：melon_hub 库 57 行零重复,采集器直写 MySQL 幂等。RustFS：344 对象上传,匿名读直链 200。后端三接口 + 图片全链路 curl 实测（现读 MySQL/RustFS）。
   - 数据规模：`hl365 10/10、wacg51 20/13、mrds 27/8`（列表/正文,正文 pending 可增量补抓）。
-- **实施中发现并修正**：对象 key 前缀 bug（复用 `download_images` 时误用 hl365 前缀）,已修代码并迁移 175 个对象文件 + DB 记录；浏览路线 evaluate/navigate 偶发 45s/60s 超时,已加 3 次重试 + 单篇容错。
-- **未验证/待办**：真实数据库与 RustFS 未接入（**等用户提供凭据**,`.env.example` 已备好变量名；S3 分支代码未经真实端点测试）；**Docker 单容器化**：`Dockerfile`/`docker-entrypoint.sh`/`.dockerignore` 已提交（每小时 hl365 定时采集 + API 服务,数据全落 `/data` 卷,WAL 支持宿主机浏览器采集跨进程并发）,但本机无 docker,**构建与容器内运行未验证**；二期项未动。
-- **受阻**：无。
+- **实施中发现并修正**：对象 key 前缀 bug（复用 `download_images` 时误用 hl365 前缀）,已修代码并迁移 175 个对象文件 + DB 记录；浏览路线 evaluate/navigate 偶发超时,已加 3 次重试 + 单篇容错；webbridge 会话与用户浏览器抢 tab 导致状态错乱,已改为专用会话 + 专用标签页（新会话首个 navigate 自动 newTab）。
+- **二期项未动**：三栏总览、去重视图、回家路页定时自动发现。
 
 ## 剩余步骤与验收
 
