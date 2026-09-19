@@ -1,0 +1,51 @@
+# melon-hub 站点采集配置
+#
+# 设计约束:三站域名常轮换,任何域名失效只需改本文件(或回家路页自动发现,二期)。
+# 字段说明:
+#   origin        源头主域名(内容权威来源,仅备查)
+#   home          当前采集用入口(镜像之一)
+#   mirrors       已知镜像池(轮换时从这里挑可用的换进 home)
+#   homeway_pages 回家路/线路页(官方地址发布口,镜像自动发现的数据源)
+#   parser        解析器名(collector/ 下同名实现;pending 表示待真实渲染后确定)
+#   user_agent    该站使用的 UA(缺省用 default_user_agent)
+
+default_user_agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36
+
+# 同一外部服务的连续请求间隔(秒),全局规范要求不低于 2
+request_interval_seconds: 2
+
+sites:
+  hl365:
+    name: 黑料不打烊
+    origin: https://heiliao.com/
+    home: https://hl365.com/
+    mirrors:
+      - https://hl365.com/
+      - https://heiliao.su/
+    homeway_pages:
+      - https://hlbdy1.com/
+      - https://696.aovcyphn.cc/
+    parser: hl365_rss
+    feed_path: /feed
+    article_url_pattern: '/archives/\d+\.html'
+
+  wacg51:
+    name: 51吃瓜
+    origin: https://51cg.fun/
+    home: https://51cg1.com/
+    mirrors:
+      - https://51cg1.com/
+      - https://wacg4.com/
+    homeway_pages:
+      - https://51cg1.com/homeway.html
+    parser: pending  # CF 盾,需真实浏览器渲染后确定 DOM 结构
+
+  mrds:
+    name: 每日大赛
+    origin: https://mrds.fun/
+    home: https://www.mrds66.com/
+    mirrors:
+      - https://www.mrds66.com/
+    homeway_pages:
+      - https://www.mrds66.com/ybml.html
+    parser: pending  # Vue SPA,需真实浏览器渲染后确定 DOM 结构
