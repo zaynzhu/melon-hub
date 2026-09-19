@@ -21,10 +21,11 @@ def _site(site_id):
     return load_config()['sites'][site_id]
 
 
-def collect_list(site_id):
+def collect_list(site_id, page_url=None):
     """渲染列表页,解析条目入库(status=pending,正文未抓)。"""
     site = _site(site_id)
-    html, _ = browser_fetch.fetch_rendered(site['home'], wait_selector='.post-card')
+    html, _ = browser_fetch.fetch_rendered(page_url or site['home'],
+                                           wait_selector='.post-card')
     items = typecho.parse_list(html, site['home'])
     db = Database()
     stats = {'new': 0, 'skipped': 0}
@@ -96,7 +97,7 @@ def collect_articles(site_id, limit=12):
         print(f'  [正文] {site_id}/{row["article_key"]} 入库({len(images)} 图)')
 
 
-def collect_thumbs(site_id, limit=40):
+def collect_thumbs(site_id, limit=40, page_url=None):
     """从列表页卡片的 base64 背景图(站点服务端直出明文)生成缩略图入库。
 
     页面内 canvas 压到 360px 宽 JPEG 再分块传回,避开加密 CDN 与大传输。
@@ -104,7 +105,7 @@ def collect_thumbs(site_id, limit=40):
     site = _site(site_id)
     db = Database()
     store = ObjectStore()
-    browser_fetch.navigate(site['home'], wait_selector='.post-card')
+    browser_fetch.navigate(page_url or site['home'], wait_selector='.post-card')
     time.sleep(2)
     total = json.loads(browser_fetch.eval_js(
         'JSON.stringify({n: document.querySelectorAll(".post-card").length})'))['n']
@@ -163,6 +164,24 @@ def collect_thumbs(site_id, limit=40):
         print(f'  [缩略图] {thumb_key}({len(raw)}B)')
         time.sleep(2)
     print(f'{site_id} 缩略图完成:{done} 张')
+
+
+def backfill(site_id, pages=3, per_page=90):
+    """全量补齐:逐页入库新条目 + 采集缩略图(含首页翻不到的历史文章)。"""
+    site = _site(site_id)
+    home = site['home'].rstrip('/')
+    total_thumbs = 0
+    for page in range(1, pages + 1):
+        url = home if page == 1 else f'{home}/page/{page}/'
+        print(f'== [{site_id}] 第 {page} 页:{url}')
+        try:
+            collect_list(site_id, page_url=url)
+            collect_thumbs(site_id, limit=per_page, page_url=url)
+        except browser_fetch.BrowserError as exc:
+            print(f'  [warn] 第 {page} 页失败,跳过: {exc}', file=sys.stderr)
+            time.sleep(2)
+            continue
+    print(f'{site_id} 全量补齐完成')
 
 
 if __name__ == '__main__':
