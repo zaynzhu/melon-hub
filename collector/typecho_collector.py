@@ -117,7 +117,7 @@ def collect_thumbs(site_id, limit=40):
             meta = json.loads(browser_fetch.eval_js(f'''(async () => {{
               const card = document.querySelectorAll('.post-card')[{i}];
               const key = (card.id || '').replace('post-card-', '');
-              if (!key) return JSON.stringify({{err: 'ad card'}});
+              if (!/^\\d+$/.test(key)) return JSON.stringify({{err: 'ad card'}});
               const style = (card.querySelector('.blog-background')
                 ?.getAttribute('style')) || '';
               const m = style.match(/base64,([A-Za-z0-9+/=]+)/);
