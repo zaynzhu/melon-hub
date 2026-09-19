@@ -25,6 +25,9 @@ sites:
     homeway_pages:
       - https://hlbdy1.com/
       - https://696.aovcyphn.cc/
+    discover:
+      markers: ['黑料不打烊']
+      theme_marker: '/usr/themes/Mirages'
     parser: hl365_rss
     feed_path: /feed
     article_url_pattern: '/archives/\d+\.html'
@@ -38,6 +41,9 @@ sites:
       - https://wacg4.com/
     homeway_pages:
       - https://51cg1.com/homeway.html
+    discover:
+      markers: ['51吃瓜']
+      theme_marker: 'post-card'
     parser: typecho  # 与 mrds 同套 Typecho 主题,渲染后 HTML 用共用解析器
 
   mrds:
@@ -48,4 +54,7 @@ sites:
       - https://www.mrds66.com/
     homeway_pages:
       - https://www.mrds66.com/ybml.html
+    discover:
+      markers: ['每日大赛']
+      theme_marker: 'post-card'
     parser: typecho  # Vue SPA,真实浏览器渲染后与 51cg 同构(post-card/post-content)
