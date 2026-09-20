@@ -87,12 +87,14 @@ navigate 文章页 → 取 .post-content 第一张 img 的 data:src.split(',')[1
 2. **解密入参是 base64 密文字符串，不是 URL**。`decryptImage('https://pic...')` 不报错但返回空——先 fetch 密文再喂 base64。
 3. **页面内 fetch 密文 CDN 拿不到数据**（CORS 响应剥离，`await r2.arrayBuffer()` 得到 undefined 报 `Cannot read properties of undefined`）。所以必须**服务端取密文**，页面只做解密。
 4. **webbridge evaluate 返回值有时是对象不是 JSON 字符串**——同样代码有时返回 `json.loads` 能吃的字符串，有时直接返回 list。稳妥写法：页内代码末尾自己 `JSON.stringify(...)`，外层再判断类型；或像现有 `typecho_collector.py` 那样所有 eval 包一层。
-5. **requests 取密文偶发 0 字节**（status 200、Content-Length 120KB、body 空的概率约 2 成）。curl 同 URL 稳定。重试 3-4 次即可，别把它当风控升级。
+5. **requests 取密文偶发 0 字节**（status 200、Content-Length 120KB、body 空的概率约 2 成）。curl 同 URL 稳定。重试 3-4 次即可，别把它当风控升级。另一个细节：第一次跑服务端 fetch 时用 `len(ct)` 判断，不要信 `resp.status_code==200` 就放过空体。
 6. **mrds 文章页导航等待 `.post-card` 必超时**——文章页没有该节点，用 `.post-content`。
 7. **`loadImage(img)` 调了没反应**——它内部走 IntersectionObserver 异步链路，列表页不触发的原因没变。别在这条路上浪费时间，直接 `decryptImage`。
 8. **注入大 base64 前先 `window.__mhCT = ""` 清零**——跨文章残留会解出上篇的图，不报错、魔数也对，但内容张冠李戴。
 9. **hl365 有 PNG 缩略图**（如 221742 的卡片是 `.png`）——存 `thumb.png`，`server/app.py` 的 `_cover` 不挑扩展名直接拼 key，入库时按魔数定扩展名即可。
 10. **RSS 只覆盖 10/121 篇的图源**——缩略图主来源是列表页卡片 `z-image-loader-url` 属性，别指望 feed。
+
+**webbridge 层的坑（evaluate 类型抖动/navigate 清零 window 变量/session 未关残留）见配套的 `docs/webbridge-playbook.md`**——解密链路的第 4、坑 2 是工具层的，不是业务层的。
 
 ---
 
