@@ -87,8 +87,11 @@ docker run -d --name melon-hub -p 8787:8787 -v melon-data:/data melon-hub
 .venv/bin/python -m collector.hl365 --backfill           # 列表翻页入库 + 纯文字正文
 .venv/bin/python -m collector.wacg51 --backfill --pages 4
 .venv/bin/python -m collector.wacg51 --thumbs            # 补抓列表缩略图(两站通用)
+.venv/bin/python scripts/thumbs_backfill.py              # 三站缩略图兜底补抓(幂等只补缺)
 .venv/bin/python -m collector.discover                   # 回家路页镜像自动发现(--apply 才写配置)
 ```
+
+> 图片原理与踩坑（CDN 加密分发、页面内解密路线）见 `docs/image-decrypt-playbook.md`。
 
 ### 启动阅读面板
 

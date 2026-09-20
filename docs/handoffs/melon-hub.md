@@ -58,15 +58,18 @@
 >
 > **2026-09-20 凌晨增量(二期开工)**:① **三栏总览视图上线**(`298f0cf`):顶栏视图切换新增 ⊞,三站并排各取最新 10 条(站点色标头),点卡片进阅读抽屉;点站点 Tab 自动回到卡片流;窄屏(≤980px)单栏堆叠。IAB 隔离浏览器 DOM 断言验证通过(仅结构断言,不截图不看内容)。② **回家路页镜像自动发现**(`0c88ba8`):`collector/discover.py` 抓 homeway 页 → href 提取候选(TLD 白名单+资源后缀过滤,防 JS 标识符误判)→ 指纹验证(标题标识词+主题结构标记,防蹭名站)→ 默认报告 / `--apply` 时 home 失效才写入(home 自检两次失败才算失效,防 CF 摩擦误报)。实测:**hl365 回家路挖出 3 个真镜像 bury/born/camp.imjurncw.cc 全部指纹通过**(黑料子域名轮换池,经 RSS/文章页/速度复核后已入 mirrors 池 `e6aae8c`,比主站快 2-3 倍,home 保持 hl365.com);51cg/mrds 回家路候选均验证失败(线路池/蹭名站),当前 home 均健康无需变更。首版曾把 JS 标识符当域名、把 CF 摩擦误判为 home 失效,均已修复。**二期剩余:跨站去重视图、Docker 构建验证;launchd 定时待用户确认**。
 
+> **2026-09-20 增量(图片解密突破,三站缩略图 356/356 全覆盖)**:① **推翻"图片真图依赖源站解密链路恢复"旧结论**(上文"受阻"段作废):站内 `decryptImage()` 是 window 全局函数(AES-CBC,密钥硬编码在 `usr/plugins/ai/common/image.*.js` 混淆代码),服务端 requests 取完整密文字节(偶发 200 空体,重试即可)+ 注入页面调该函数 = 真图,**不依赖源站恢复、不依赖年龄门**。列表页解密"失效"实为 IntersectionObserver 未命中(图不在视口),非链路坏。② **成果**:hl365 121/121(列表翻 12 页建卡片图映射 111 篇批量解密 + 文章页头图兜底 1 篇 221515)、mrds 135/135(`--thumbs` 补 54 + 文章页首图补 17)、wacg51 100/100(文章页首图补 4);全部魔数校验,首页 50 篇 cover 接口抽查零空值。③ **固化**:`docs/image-decrypt-playbook.md`(完整原理+踩坑 10 条+复用流程,**换人/换 agent 必读**)+ `scripts/thumbs_backfill.py`(幂等补抓脚本,清缺单篇实测跑通,PNG 魔数正确)+ `collector/typecho_collector.py` 文档串接。④ mrds/wacg51 文章页正文首图是明文 data:URI(与密文 CDN 不同源),文章页兜底缩略图不用解密;mrds 文章页无 `.post-card`,wait 用 `.post-content`。⑤ **待做**:同一路线可复活 `scripts/fix_images_browser.py` 批量修正文密文图(images_json 里 1800+ 张密文对象)。
+
 - **存储接入(已完成)**:`.env`(不入库)配置 MELON_DB_URL(mysql://…13306/melon_hub,自动建库)+ MELON_S3_*(RustFS 192.168.50.233:59100,桶 melon-hub 已建并设匿名读)。本地数据已迁移:`scripts/migrate_local_to_remote.py`(57 行→MySQL 零重复,344 对象→RustFS)。采集器/后端已全链路跑通 MySQL+RustFS(列表/详情/图片直链 200 实测)。
-- **图片加密问题(重要,未解决——源站自身问题)**:
+- **图片加密问题(2026-09-20 已解决——缩略图全覆盖;正文图待批量修复)**:
   - 三站图片 CDN(hdhwqx/ndhixj)对所有 HTTP 客户端返回**加密字节**(非图片),仅站内 z-image-loader JS 解密;GIF 明文例外。
+  - **2026-09-20 突破**:页面全局 `decryptImage(b64)` 函数 + 服务端取密文注入 = 直接解密,详见 `docs/image-decrypt-playbook.md`(原理/踩坑/复用流程),缩略图已三站全覆盖。
   - 站内解密链路依赖:年龄门确认 → IndexedDB 缓存 → Web Worker 下载;实测 worker 下载被 CORS 拦截、缓存库为空——**原站正文 JPEG 在用户 Chrome 里也渲染失败**(106 张仅 12 张 GIF 成功,nw=0 实测),即源站当前对所有人图片也是坏的。
   - 曾成功抓到 1 张真图(过年龄门后视口图,277KB 真 JPEG,FF D8 魔数验证),证明"原站恢复正常时,`scripts/fix_images_browser.py`(借浏览器 blob 取图)路线可用;当前重跑无效(源站链路失效)。
   - 已做前端优雅降级:封面/正文破图替换为占位,界面不受影响(截图确认)。
   - 待验证假设:CDN 可能对本 IP 风控(当日数百次采集请求)。建议次日换网络(手机热点)开 hl365.com 看图片是否正常;若正常则换网络重跑修复脚本批量取真图。
 - **前端验证**:headless Chrome 截图,列表/卡片/来源/日期正常,占位降级生效(用户 Chrome 中建议直接看,内置浏览器不渲染位图)。
-- **受阻**:图片真图获取依赖源站解密链路恢复,非本项目代码问题。
+- ~~**受阻**:图片真图获取依赖源站解密链路恢复,非本项目代码问题~~ → **2026-09-20 已突破**,见上方增量记录与 `docs/image-decrypt-playbook.md`。
 
 - **已产出**（git `8cc19c8`→`b138c5b`）：
   - 步骤 1 骨架：目录、`config/sites.yaml`（三站完整配置）、venv、`.env.example`。

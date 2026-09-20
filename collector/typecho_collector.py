@@ -101,6 +101,10 @@ def collect_thumbs(site_id, limit=40, page_url=None):
     """从列表页卡片的 base64 背景图(站点服务端直出明文)生成缩略图入库。
 
     页面内 canvas 压到 360px 宽 JPEG 再分块传回,避开加密 CDN 与大传输。
+
+    漏网文章(被挤出可翻页范围)的缩略图补抓走
+    scripts/thumbs_backfill.py(文章页首图是明文 data:URI,可兜底);
+    原理与踩坑详见 docs/image-decrypt-playbook.md。
     """
     site = _site(site_id)
     db = Database()

@@ -87,8 +87,11 @@ The entrypoint collects hl365 once on boot and then hourly; API and frontend are
 .venv/bin/python -m collector.hl365 --backfill           # paginate list pages + text-only articles
 .venv/bin/python -m collector.wacg51 --backfill --pages 4
 .venv/bin/python -m collector.wacg51 --thumbs            # backfill list thumbnails (both sites)
+.venv/bin/python scripts/thumbs_backfill.py              # fallback thumbnail backfill for all three sites (idempotent)
 .venv/bin/python -m collector.discover                   # mirror auto-discovery via homeway pages (--apply to write config)
 ```
+
+> See `docs/image-decrypt-playbook.md` for how images work (encrypted CDN, in-page decryption route) and the pitfalls.
 
 ### Launch the dashboard
 
