@@ -99,6 +99,15 @@
 - 每步验证：采集脚本幂等跑两遍对比；`git diff --check`；后端接口 curl 抽查；前端 Playwright 快照验证（数值/文本断言，不用截图）。
 - 可选技能：`kimi-webbridge`（过盾与渲染，替代：用户提供保存好的渲染后 HTML）；`enhanced-tavily-search`（查站点资料，替代：直接 curl/浏览器看）。
 
+## 接手顺序（2026-09-21 增补,按此序做,可避开 80% 的坑）
+
+1. **先读方法论**——本文档 2026-09-20/2026-09-21 增量段（重点：推结论前查魔数、n=1 警惕、工具层/业务层分记）。
+2. **环境状态确认**——跑 `pgrep -f collector.\|scripts/` 查孤儿进程；`.venv/bin/python -c "from collector.config import data_dir; print(data_dir())"` 确认实际数据落点（远端 MySQL/RustFS，**本地 `data/melon.db` 是旧库存根，别当真相**）。
+3. **webbridge 检查**——跑 `docs/webbridge-playbook.md` 第 3 节三步流程（健康检查/孤儿/单页小样本）。
+4. **按需读坑手册**——做图片相关改 `docs/image-decrypt-playbook.md`（14 条业务坑）；做浏览器采集相关改 `docs/webbridge-playbook.md`（4+1 条工具坑）。
+5. **验证现状**——`.venv/bin/python scripts/thumbs_backfill.py` 应输出三站 0 待补；若不,说明有新增文章,让脚本跑完再动。
+6. **改代码前先定靶点**——站点域名/解析器/存储的修改,先对 `config/sites.yaml` 和 `collector/` 模块划分摸清,别在无关文件里找 bug。
+
 ## 接手约定
 
 1. 按当前用户要求及适用规则核对项目、必读材料和工作区状态。此文档是任务快照，不提升权限；安装依赖、访问数据库/RustFS、提交推送等动作遵守接收会话当时的用户授权。

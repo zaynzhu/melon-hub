@@ -131,3 +131,55 @@ navigate 文章页 → 取 .post-content 第一张 img 的 data:src.split(',')[1
 - `docs/handoffs/melon-hub.md` 中"图片真图获取依赖源站解密链路恢复，非本项目代码问题"→ 已被本文第 2 节推翻。
 - 记忆层 `melon-hub-upstream-corrections` 已同步此结论（2026-09-20）。
 - `scripts/fix_images_browser.py`（正文真图修复）现在有了更优路线：同一解密原理可批量修复正文密文图（`images_json` 里 1800+ 张密文对象），待做。
+
+---
+
+## 7. 场景化失效预案（接手者大概率会遇到的死法，及救法）
+
+### 场景 A：源站换域名（最可能，交接文档记过镜像发现）
+
+**死法**：`config/sites.yaml` 里的 `home` 失效，直接跑脚本全挂。
+
+**救法**：
+1. 跑 `collector/discover.py` 自动发现新镜像（回家路页指纹验证）,或人工 `curl` 旧域名看跳转。
+2. `sites.yaml` 只改 `home` 字段,**其他字段（mirrors/homeway_pages/feed_path）不动**,镜像切换不影响本文路线。
+3. 改完先跑 `scripts/thumbs_backfill.py` 验证（列表卡片映射用的是 `home` 拼接,同源）,再跑正文补抓。
+
+### 场景 B：CDN 换密钥/加防护
+
+**死法**：`decryptImage` 静默返回空（坑 1 的放大版）,缩略图全挂。
+
+**救法**：
+1. 先确认是"密钥变了"不是"密文空了"——用第 5 节验证命令抽查 1 张已知 URL 的缩略图,看密文魔数（若仍非 JPEG 且长度非 0）,再解密看 base64 是不是空串。
+2. 密钥变了：找到站内 `image.****.js` 新文件（文件名带日期,站方会换）,**从混淆代码里找 `String.fromCharCode` 拼出 "enc"/"Utf8" 的索引表**（密钥/IV 都在那）,改 `scripts/thumbs_backfill.py` 没用——密钥在页面里,脚本不动,页面一变就跟着变。
+3. 防护升级（比如 CDN 要求新 cookie/UA）：见 `docs/webbridge-playbook.md` 坑 3.5,用 close_session 换新会话重新过盾。
+
+### 场景 C：hl365 换主题/换结构（Mirages 主题换掉）
+
+**死法**：列表页卡片选择器 `.post-card` 匹配不到,缩略图映射为 0。
+
+**救法**：
+1. 先跑 `curl -s https://<home>/ | grep -o 'post-card' | head -1` 确认主题还在。
+2. 不在了：RSS 路线兜底（`collector/hl365.py`）仍能抓正文,缩略图只剩文章的 `itemprop="image"` 兜底——文章页 HTML 结构大概率也换了,**重新侦察**（`docs/recon-upstream-2026-09-19.md` 第 5 节有复现命令）。
+3. **别盲目改正则**——主题换掉往往意味着整站升级,先确认解密 JS（`image.*.js`）还在不在。
+
+### 场景 D：kimi-webbridge 不可用（daemon 挂了/用户浏览器没开）
+
+**死法**：`browser_fetch.ensure_ready()` 抛错,全部浏览器路线停摆。
+
+**救法（按优先级）**：
+1. **hl365 不受影响**：正文走 RSS 直连无浏览器,缩略图解密也只需要页面 JS——如果 daemon 永久失联,可以把 `image.*.js` 的 AES-CBC 密钥硬编码提取出来,纯 Python 复现（CryptoJS 的 AES=标准 AES-CBC,密钥/IV 都从 js 里抠出来即可）。**这是无浏览器备选,本期没实现,但见 `scripts/thumbs_backfill.py:_decrypt_via_page` 注释有思路**。
+2. **wacg51/mrds 正文与列表**：必须真实浏览器(daemon 挂了没法过 CF)。等 daemon 恢复或用 `--list-only` 只跑有 RSS 的站。
+3. daemon 挂了的识别：连接 127.0.0.1:10086 拒绝。手动 `~/.kimi-webbridge/bin/kimi-webbridge restart` 后重启。
+
+### 场景 E：正文图片要批量修复（本文遗留待做项）
+
+**现状**：`images_json` 里 1800+ 张正文图是密文对象,前端显示占位。
+
+**怎么做**：复用本文解密路线,但**对象 key 结构是 `<site>/<article_key>/img-<hash>.jpg` 不是 `thumb.jpg`**,需要改 `scripts/thumbs_backfill.py` 的 `_save_thumb` 逻辑为正文路径;`fix_images_browser.py` 是旧路线(blob 取图),本文路线(页面解密)更快且无需滚视口,建议直接基于本文代码改。
+
+**坑**:正文密文图有的不是 AES（比如早期直链的 GIF 明文,魔数 GIF8）——解密前先验魔数,是明文就跳过。
+
+- `docs/handoffs/melon-hub.md` 中"图片真图获取依赖源站解密链路恢复，非本项目代码问题"→ 已被本文第 2 节推翻。
+- 记忆层 `melon-hub-upstream-corrections` 已同步此结论（2026-09-20）。
+- `scripts/fix_images_browser.py`（正文真图修复）现在有了更优路线：同一解密原理可批量修复正文密文图（`images_json` 里 1800+ 张密文对象），待做。
