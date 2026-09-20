@@ -19,7 +19,7 @@
 
 ## ✨ Features
 
-- **多源聚合** -- Tab 切换浏览各内容站最新列表，卡片流 / 时间线双视图，来源配色一眼区分
+- **多源聚合** -- Tab 切换浏览各内容站最新列表，卡片流 / 时间线 / 三栏总览多视图，来源配色一眼区分
 - **干净阅读** -- 正文自动清洗去广告，全屏阅读抽屉，缓存命中秒开
 - **双存储驱动** -- 配置 MySQL + RustFS 即接入自有基建；不配置自动回退 SQLite + 本地目录，上层接口不变
 - **可靠采集** -- 主机级 2 秒频控、增量幂等重跑、遇登录墙 / 验证码自动停止
@@ -87,6 +87,7 @@ docker run -d --name melon-hub -p 8787:8787 -v melon-data:/data melon-hub
 .venv/bin/python -m collector.hl365 --backfill           # 列表翻页入库 + 纯文字正文
 .venv/bin/python -m collector.wacg51 --backfill --pages 4
 .venv/bin/python -m collector.wacg51 --thumbs            # 补抓列表缩略图(两站通用)
+.venv/bin/python -m collector.discover                   # 回家路页镜像自动发现(--apply 才写配置)
 ```
 
 ### 启动阅读面板
@@ -106,8 +107,8 @@ docker run -d --name melon-hub -p 8787:8787 -v melon-data:/data melon-hub
 | ✅ | 三站聚合浏览 + 全屏阅读抽屉 + 时间线视图 |
 | ✅ | MySQL + RustFS 存储、本地自动回退 |
 | ✅ | 历史文章翻页补齐、列表缩略图采集 |
-| 📋 | 回家路页自动发现新镜像域名 |
-| 📋 | 三栏总览视图、跨站去重视图 |
+| ✅ | 三栏总览视图、回家路页自动发现新镜像 |
+| 📋 | 跨站去重视图 |
 | 📋 | Docker 镜像构建验证 |
 
 ---

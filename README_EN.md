@@ -19,7 +19,7 @@
 
 ## ✨ Features
 
-- **Multi-source aggregation** -- Switch between content sites via tabs, with card-flow / timeline views and per-source color coding
+- **Multi-source aggregation** -- Switch between content sites via tabs, with card-flow / timeline / three-column views and per-source color coding
 - **Clean reading** -- Ad-free article extraction, fullscreen reading drawer, instant open on cache hit
 - **Dual storage drivers** -- Plug in your own MySQL + RustFS via config; falls back to SQLite + local directory automatically with identical interfaces
 - **Reliable collection** -- Host-level 2s rate limiting, idempotent incremental runs, auto-stop on login walls or CAPTCHAs
@@ -87,6 +87,7 @@ The entrypoint collects hl365 once on boot and then hourly; API and frontend are
 .venv/bin/python -m collector.hl365 --backfill           # paginate list pages + text-only articles
 .venv/bin/python -m collector.wacg51 --backfill --pages 4
 .venv/bin/python -m collector.wacg51 --thumbs            # backfill list thumbnails (both sites)
+.venv/bin/python -m collector.discover                   # mirror auto-discovery via homeway pages (--apply to write config)
 ```
 
 ### Launch the dashboard
@@ -101,13 +102,13 @@ Switch sites or the timeline view from the top bar, click any card for the fulls
 
 ## 🗺️ Roadmap
 
-| Status | Item |
-|--------|------|
+| 状态 | 事项 |
+|------|------|
 | ✅ | Multi-site browsing + fullscreen reading drawer + timeline view |
 | ✅ | MySQL + RustFS storage with local fallback |
 | ✅ | Paginated history backfill and list thumbnail collection |
-| 📋 | Auto-discovery of new mirror domains |
-| 📋 | Three-column overview and cross-site dedup views |
+| ✅ | Three-column overview and homeway mirror auto-discovery |
+| 📋 | Cross-site dedup view |
 | 📋 | Docker image build verification |
 
 ---
