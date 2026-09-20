@@ -22,6 +22,10 @@ sites:
     mirrors:
       - https://hl365.com/
       - https://heiliao.su/
+      # 2026-09-20 回家路发现并经指纹+RSS+文章页验证的官方子域名池,比主站快 2-3 倍
+      - https://bury.imjurncw.cc/
+      - https://born.imjurncw.cc/
+      - https://camp.imjurncw.cc/
     homeway_pages:
       - https://hlbdy1.com/
       - https://696.aovcyphn.cc/
