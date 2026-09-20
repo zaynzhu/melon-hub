@@ -19,13 +19,26 @@ kimi-webbridge 是本项目的**一切浏览器路线的地基**：列表采集�
 
 ## 2. 反直觉行为与踩坑
 
-### 坑 1：`navigate()` 静默换 tab，上一个 tab 的窗口变量全部丢失
+### 坑 1：evaluate 返回 `null` 时先问"代码跑在哪一页"，不是 navigate 清了 window 变量
 
-**现象**：连续调两次 `navigate()` 到不同 URL，第二次的 evaluate 报 `Cannot read properties of null`，明明刚才明明有那个节点。
+**现象**：连续两次 `navigate()` 后，前一个页面的 evaluate 报 `Cannot read properties of null`，"刚才明明有那个节点"。
 
-**根因**：`browser_fetch.navigate()` 内部有跳走检测（广告页 JS 跳转自动拉回）。`session` 绑定的 tab 被导航走后，`window.__mhXXX` 之类的**临时变量全部清零**——页面重载连 sessionStorage 都清了。
+**真相（2026-09-21 复盘修正）**：**不是 window 变量被 navigate 清了**——`browser_fetch.navigater()` 的跳走检测（看 `location.href` 不对就拉回）才是清窗的真凶；同一 tab 正常 navigate 到同域页面,`window` 对象随页面重载自然重建,变量清零是正常浏览器行为不属"坑"。**真正的坑是"当前 tab 在哪一页"**：`myTab.url` 会变,evaluate 总跑在最新 tab 的上下文里;如果上一次 navigate 到了 mrds,这次 evaluate 查的是 mrds 的 DOM,不是你以为的 hl365。
 
-**解法**（当前代码已有）：**不要把状态塞进 window 跨 navigate 复用**。每次 navigate 后从头建上下文；要跨页面传值走服务端（文件/DB 中转），别走 window 变量。
+**解法**：
+- 拿"当前页是不是目标页"用 `browser_fetch.eval_js('location.href')` 先确认,**别猜 tab**
+- 跨页面传值走服务端/文件,别走 window 变量(页面重载 natural 重建,与 webbridge 无关)
+- navigate（尤其多 tab 切换）后,evaluate 前先打一句 `console.log` 或 `location.href` 确认上下文
+
+### 坑 3.5：`close_session()` 函数已存在但没人调
+
+`browser_fetch.py` 底部有 `def close_session()`（2026-09-19 就写了,见 L124-125）,但当前 `scripts/thumbs_backfill.py` 和各 `collector/*.py` 的 main 都**没有调用**——session `melon-hub-imgfix` 会一直挂着,下次跑新任务还在用上次的状态。
+
+**影响分两面**：
+- 好处：CF 有效 cookie 复用省时间(过盾会话不丢)
+- 坏处:残留状态可能带过期 CF 盾/cookie,或残留`window.__mhCT`大字符串
+
+**应对(待补齐)**：各采集脚本 main 末尾统一加 `browser_fetch.close_session()`；二期补自动化前必须做,否则 launchd 定时任务会带脏 session 跑。
 
 ### 坑 2：`evaluate` 注入大字符串偶发超时/挂起，分块是唯一稳定解法
 
@@ -49,17 +62,15 @@ if isinstance(out, str):
 
 `collector/typecho_collector.py` 所有 eval 均如此，新增代码别偷懒。
 
-### 坑 4：本项目 session 没关，下一位接手前需先清残留（已知缺口）
+### 坑 4：本项目 session 没关，下一位接手前需先清残留（已知缺口,见坑 3.5）
 
-**现状**：`collector/browser_fetch.py` 用固定 session 名 `melon-hub-imgfix`，**没有 close 动作**；历史采集的 navigate 会复用同一 tab，但 tab 状态（当前 URL、年龄门 localStorage、Cookie）跨会话残留。
+**现状**：`collector/browser_fetch.py` 用固定 session 名 `melon-hub-imgfix`，脚本末尾**没有调用 `close_session()`**(虽在 L124 定义了);历史采集的 navigate 会复用同一 tab,但 tab 状态（当前 URL、年龄门 localStorage、Cookie）跨会话残留。
 
 **影响**：
 - 好处：CF 过盾后的有效 session 复用，省一次挑战
 - 坏处：残留状态可能是过期 CF 盾、或者上一个 task 没跑完的解密图（`window.__mhCT` 残留）
 
-**接手自检**：跑采集前先 `pgrep -f collector.\|scripts/` 看有没有孤儿 python 还在跑（2026-09-19 深夜孤儿进程反而干完 24 篇的教训）；如要全新跑，改 `SESSION` 名或直接重启 webbridge daemon。
-
-**待做**：给 `browser_fetch.py` 加 `close()` 入口，各 collector 脚本末尾统一调——二期补自动化时一起做。
+**接手自检**：跑采集前先 `pgrep -f collector.\|scripts/` 看有没有孤儿 python 还在跑（2026-09-19 深夜孤儿进程反而干完 24 篇的教训）；如要全新跑,改 `SESSION` 名或直接重启 webbridge daemon;单轮跑完别忘在 main 末尾加 `browser_fetch.close_session()`（二期待补齐,见坑 3.5）。
 
 ---
 

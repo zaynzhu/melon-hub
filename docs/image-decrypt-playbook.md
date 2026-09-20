@@ -93,8 +93,12 @@ navigate 文章页 → 取 .post-content 第一张 img 的 data:src.split(',')[1
 8. **注入大 base64 前先 `window.__mhCT = ""` 清零**——跨文章残留会解出上篇的图，不报错、魔数也对，但内容张冠李戴。
 9. **hl365 有 PNG 缩略图**（如 221742 的卡片是 `.png`）——存 `thumb.png`，`server/app.py` 的 `_cover` 不挑扩展名直接拼 key，入库时按魔数定扩展名即可。
 10. **RSS 只覆盖 10/121 篇的图源**——缩略图主来源是列表页卡片 `z-image-loader-url` 属性，别指望 feed。
+11. **本地 `data/melon.db` 是旧库存根**：项目根目录有 `data/melon.db` 但**不是服务所用库**——`.env` 里 `MELON_DB_URL=mysql://192.168.50.233:13306/melon_hub`，服务直连远端 MySQL 和 RustFS。本地库连 `thumb_object` 列都没有（旧 schema 迁移残留）。**排查问题前先 `python -c "from collector.config import data_dir; print(data_dir())"` 看代码实际落点**，别拿本地库当真相源。
+12. **`_fetch_cipher` 的空体判断不能漏**：`requests.get` 返回 200 但 body 空的概率约 2 成,必须用 `if resp.content and len(resp.content) > 0` 双重判断;只查 `resp.status_code == 200` 会放过空体导致后续 base64 encode 0 字节、解密静默失败,排障时会误判成"密钥错了"。
+13. **hl365 列表卡片页正则的坑**：`id="post-card-(\d+)"[^>]*>.{0,400}?z-image-loader-url` 里 `.{0,400}` 是防 HTML 里跨节点乱撞的保守上界,实测列表页一个卡片平均 400-600 字节标签量,上界写小了会漏匹;同时**必须用 `re.S`**(卡片标签多行),漏了会匹配不到卡片。
+14. **`decryptImage` 密钥/IV 位置会变**：`usr/plugins/ai/common/image.0821.js`（2026-09-20 版本)密钥硬编码在 `_0x442c(...)` 索引表里,文件名带日期(`0821`)——站方换版本会同时改密钥。**接手重跑前先 curl 该 JS 文件,确认当前版本与文档记录一致**;不一致时重新从混淆代码提取密钥（找 `String.fromCharCode` 拼接出 "enc"/"Utf8" 的位置）,别默认密钥不变。
 
-**webbridge 层的坑（evaluate 类型抖动/navigate 清零 window 变量/session 未关残留）见配套的 `docs/webbridge-playbook.md`**——解密链路的第 4、坑 2 是工具层的，不是业务层的。
+**webbridge 层的坑（evaluate 类型抖动/navigate 换 tab/session 残留）见配套的 `docs/webbridge-playbook.md`**——解密链路的坑 2、3、4、8 是工具层的，不是业务层的。
 
 ---
 
