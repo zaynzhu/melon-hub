@@ -13,6 +13,8 @@ RUN chmod +x docker-entrypoint.sh
 
 # 数据(SQLite + 对象文件)全部落在挂载卷,容器无状态
 ENV MELON_DATA_DIR=/data
+# 容器日志时间戳用上海时区;调度时区由代码内 zoneinfo(MELON_TZ,默认 Asia/Shanghai)决定
+ENV TZ=Asia/Shanghai
 VOLUME /data
 EXPOSE 8787
 
