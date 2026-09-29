@@ -62,7 +62,7 @@
 
 > **2026-09-21 复盘(方法论补记,换人/换 agent 接手前必读)**:① **推结论前必查魔数/字节,别信界面**——这次最关键的反转是"curl 200 + content-type image/jpeg 不代表是图"(CDN 加密字节),此前 09-19 交接里"原站正文 JPEG 在用户 Chrome 里也渲染失败"的结论也建立在 nw=0 实测上;每次发现"界面没图"先跑 `head -c 4 file | xxd` 或魔数校验,能排掉一半误判。② **样本量 n=1 的"规律"要警惕**——hl365 列表页解密"不跑"是基于一次实测(过年龄门后 106 张 JPEG 仍 nw=0)推的"链路失效",实际原因是 IntersectionObserver 未命中(图不在视口),与链路无关;**对站点行为的结论至少要两次独立样本验证或用代码机制佐证**。③ **工具层坑与业务层坑分开记**——`webbridge-playbook.md` 管浏览器驱动的坑(navigate/evaluate/session),`image-decrypt-playbook.md` 管站点内容的坑(解密/密文/魔数);混记会导致工具坑被业务现象掩盖,反之亦然。④ **复盘时补漏的坑清单已增到 14 条**(image-decrypt)+ 4 条(webbridge),新增 11 本地库非真相源、12 空体判断、13 正则要 re.S、14 密钥版本会变。
 
-> **2026-09-29 增量(正文密文图批量修复完成,二期"跨站去重视图"侦察结论)**:① **正文密文图 2788 张(比早前记的"1800+"多,那是初盘口径)全量解密入库,零失败**——路线比预期快 20 倍:三站 `image.*.js` 混淆程度低,密钥/IV 以字符码串明文藏在 Web Worker `decryptjs` 里,正则提取(三站同一组,openssl+pycryptodome 双验证);密文对象早已全在 RustFS,批量过程纯内网不碰外站不碰浏览器(webbridge 扩展当时未连,反而促成了这条更好的路线)。脚本 `scripts/article_img_decrypt.py` 三阶段:盘点→**备份硬闸门**(密文全量备份 `data/backup_cipher/` 并校验,未通过不覆盖)→解密(首张失败即整体中止防白跑);**密钥不硬编码**(仓库在 GitHub,运行时从 JS 提取,站方换版重跑自适应),依赖 pycryptodome 已入 requirements。详见 `docs/image-decrypt-playbook.md` 第 8 节。② **跨站去重实测**:归一化标题精确匹配 0 组、图片 URL 跨站共用 0 个、模糊匹配(≥0.5)仅 5 对(真重复 2-3 组,含 1 个同剧集不同集数假阳性)——与 09-19 记录的"三站大量互转(用户观察)"不符,当前 356 篇语料真重复极零星;**建议挂起不做**,语料上量后再评估。③ 验证:库存复查零密文残留、格式分布 2774 JPEG+14 PNG、三站直链抽查 6/6 过。**剩余待办:Docker 构建验证、launchd 定时(待用户拍板)、去重挂起。**
+> **2026-09-29 增量(同步面板 + 应用内定时采集上线)**:① **手动同步面板**——顶栏「同步」按钮弹三站复选面板(默认全选),逐站实时状态轮询(`POST /api/sync` + `GET /api/sync/status` 2s 轮询),浏览器站在 daemon 不通时 TCP 预探测快速降级提示,「全部」视图也可用(旧 refresh 接口与"须先选站"限制一并移除)。② **应用内定时调度**(`server/sync.py`,取代 entrypoint shell 循环与 launchd 方案)——FastAPI lifespan 起 daemon 线程 30s tick,双模式独立开关:间隔 N 小时(`sync.interval_hours`,0=关)/每日 HH:MM(`sync.daily_at`,空=关,时区 `MELON_TZ` 默认 Asia/Shanghai),配置存 MySQL settings 表(`get_setting`/`set_setting`,settings.html 设置页可视化修改);定时只调度 hl365;手动与定时共用模块级运行锁(冲突 409/跳过 tick);**首启无 `sync.initialized` 键时采一次并一次写入三计时键防双跑**;保存配置重置计时(间隔=now,每日=清空当日键)。③ **约束**:uvicorn 必须单 worker(多 worker 重复调度);wacg51/mrds 浏览器采集与宿主机 CLI 采集共用同一浏览器 tab,**别同时跑**;Dockerfile 加 `TZ=Asia/Shanghai` + tzdata 依赖。④ 验证:隔离实例(临时 SQLite+8788)首启三键写入、daily_at 设 1 分钟后 tick 精确触发、409/400 校验全过、三站手动同步浏览器路线真跑通。**launchd 待办正式关闭(方案改为应用内调度,Docker 与本地行为一致)。**
 
 - **存储接入(已完成)**:`.env`(不入库)配置 MELON_DB_URL(mysql://…13306/melon_hub,自动建库)+ MELON_S3_*(RustFS 192.168.50.233:59100,桶 melon-hub 已建并设匿名读)。本地数据已迁移:`scripts/migrate_local_to_remote.py`(57 行→MySQL 零重复,344 对象→RustFS)。采集器/后端已全链路跑通 MySQL+RustFS(列表/详情/图片直链 200 实测)。
 - **图片加密问题(2026-09-29 全部解决——缩略图 356/356 + 正文图 2788/2788,见 09-20/09-29 增量块与 `docs/image-decrypt-playbook.md`)**:
@@ -77,10 +77,10 @@
 
 - **已产出**（git `8cc19c8`→`b138c5b`）：
   - 步骤 1 骨架：目录、`config/sites.yaml`（三站完整配置）、venv、`.env.example`。
-  - 步骤 2 hl365 采集器：`collector/hl365.py`（RSS 全文路线,**无需文章页抓取**,见侦察档案第 9.1 节修正）；`collector/fetch.py`（host 级 2s 频控）、`collector/clean.py`、`collector/store.py`（MySQL + RustFS 双驱动,本地 SQLite/目录回退）。
+  - 步骤 2 hl365 采集器：`collector/hl365.py`（RSS 全文路线,**无需文章页抓取**,见侦察档案第 9.1 节修正）；`collector/fetch.py`（host 级 2s 频控）、`collector/clean.py`、`collector/store.py`（MySQL + RustFS 双驱动,本地 SQLite/目录回退,2026-09-29 加 settings 键值表）。
   - 步骤 3 双站采集器：`collector/typecho.py`（51cg/mrds 共用解析器,两站同套 Typecho 主题）、`collector/browser_fetch.py`（kimi-webbridge 驱动,独立会话 melon-hub-imgfix）、`collector/wacg51.py` / `collector/mrds.py` 入口。
-  - 步骤 4 后端：`server/app.py`（FastAPI：sources / articles 列表 / 详情 / refresh 接口 + `/objects` 静态对象服务 + web 静态托管）。
-  - 步骤 5 前端：`web/`（Tab 三站切换 + 卡片流 + 全屏阅读抽屉,OLED 暗色,取 pixiu 设计语言;破图优雅降级）。
+  - 步骤 4 后端：`server/app.py`（FastAPI：sources / articles 列表 / 详情 / 同步与定时配置接口 + `/objects` 静态对象服务 + web 静态托管；同步调度逻辑在 `server/sync.py`,语义表见 09-29 增量块）。
+  - 步骤 5 前端：`web/`（Tab 三站切换 + 卡片流 + 全屏阅读抽屉,OLED 暗色,取 pixiu 设计语言;破图优雅降级;同步面板 + settings.html 设置页,2026-09-29）。
   - 迁移/修复脚本：`scripts/migrate_local_to_remote.py`、`scripts/fix_images_browser.py`。
   - Docker：`Dockerfile`/`docker-entrypoint.sh`/`.dockerignore`（每小时 hl365 定时采集 + API,数据全落 `/data` 卷）——本机无 docker,**构建未验证**。
 - **已验证**：
@@ -88,7 +88,7 @@
   - MySQL：melon_hub 库 57 行零重复,采集器直写 MySQL 幂等。RustFS：344 对象上传,匿名读直链 200。后端三接口 + 图片全链路 curl 实测（现读 MySQL/RustFS）。
   - 数据规模：`hl365 10/10、wacg51 20/13、mrds 27/8`（列表/正文,正文 pending 可增量补抓）。
 - **实施中发现并修正**：对象 key 前缀 bug（复用 `download_images` 时误用 hl365 前缀）,已修代码并迁移 175 个对象文件 + DB 记录；浏览路线 evaluate/navigate 偶发超时,已加 3 次重试 + 单篇容错；webbridge 会话与用户浏览器抢 tab 导致状态错乱,已改为专用会话 + 专用标签页（新会话首个 navigate 自动 newTab）。
-- **二期项(2026-09-29 更新)**：三栏总览(298f0cf)与回家路页定时自动发现(0c88ba8)已完成;跨站去重实测真重复仅 2-3 组,挂起(见 09-29 增量块);Docker 构建验证、launchd 定时待办。
+- **二期项(2026-09-29 更新)**：三栏总览(298f0cf)与回家路页定时自动发现(0c88ba8)已完成;跨站去重实测真重复仅 2-3 组,挂起(见 09-29 增量块);同步面板+应用内定时已完成(见 09-29 第二增量块,launchd 方案关闭);Docker 构建验证待办。
 
 ## 剩余步骤与验收
 

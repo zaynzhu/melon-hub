@@ -21,6 +21,8 @@
 
 - **Multi-source aggregation** -- Switch between content sites via tabs, with card-flow / timeline / three-column views and per-source color coding
 - **Clean reading** -- Ad-free article extraction, fullscreen reading drawer, instant open on cache hit
+- **Manual sync** -- Pick sites and collect from the web UI, with per-site live progress and results
+- **Built-in scheduling** -- Two independent modes (every N hours / daily at HH:MM), configurable in the settings page, no system-level cron needed
 - **Dual storage drivers** -- Plug in your own MySQL + RustFS via config; falls back to SQLite + local directory automatically with identical interfaces
 - **Reliable collection** -- Host-level 2s rate limiting, idempotent incremental runs, auto-stop on login walls or CAPTCHAs
 - **Graceful degradation** -- Broken images replaced with placeholders; list thumbnails collected independently
@@ -67,7 +69,9 @@ docker build -t melon-hub .
 docker run -d --name melon-hub -p 8787:8787 -v melon-data:/data melon-hub
 ```
 
-The entrypoint collects hl365 once on boot and then hourly; API and frontend are served on port 8787.
+The container serves the API and frontend on port 8787; scheduled collection runs inside the app: by default hl365 is collected every 6 hours and daily at 03:00. Open `/settings.html` to change the interval / time or disable either mode; the "Sync" button in the top bar collects on demand. A first collection runs automatically on boot.
+
+> Deployment note: the scheduler runs inside the API process — keep a single instance (one uvicorn worker); multiple instances will duplicate collection.
 
 ---
 
@@ -101,6 +105,11 @@ The entrypoint collects hl365 once on boot and then hourly; API and frontend are
 
 Switch sites or the timeline view from the top bar, click any card for the fullscreen reading drawer, and use "view original" to jump to the source page.
 
+### Sync and scheduled collection
+
+- **Manual sync**: the "Sync" button in the top bar — pick sites and start; the panel shows live per-site progress (hl365 via RSS finishes in seconds; the two browser-based sites take a few minutes each).
+- **Scheduling**: open `/settings.html` — two independent modes, "every N hours" and "daily at HH:MM" (timezone `MELON_TZ`, default Asia/Shanghai); keep one or turn both off. Only hl365 is scheduled (no browser needed); settings persist in the database across restarts.
+
 ---
 
 ## 🗺️ Roadmap
@@ -112,6 +121,7 @@ Switch sites or the timeline view from the top bar, click any card for the fulls
 | ✅ | Paginated history backfill and list thumbnail collection |
 | ✅ | Three-column overview and homeway mirror auto-discovery |
 | ✅ | Batch decryption of encrypted article images (2,788 images, 2026-09-29) |
+| ✅ | Web-UI manual sync + in-app scheduled collection (2026-09-29) |
 | ⏸️ | Cross-site dedup view (only 2-3 real duplicates found; revisit when corpus grows) |
 | 📋 | Docker image build verification |
 
