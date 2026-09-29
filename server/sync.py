@@ -15,6 +15,12 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
+
+def _new_db():
+    """收尾步骤自建短命连接(与 auto_decrypt_new 同模式),避免共享 app 的连接。"""
+    from collector.store import Database
+    return Database()
+
 TICK_SECONDS = 30
 DEFAULT_INTERVAL_HOURS = 6
 DEFAULT_DAILY_AT = '03:00'
@@ -129,6 +135,7 @@ def _collect_source(source, pages=1):
             from collector import hl365
             stats = hl365.collect(pages=pages)
             stats['img_decrypted'] = _decrypt_new_cipher_images()
+            stats['thumbs'] = _backfill_hl365_thumbs()
             return {'status': 'ok', 'stats': stats, 'error': ''}
         if source in ('wacg51', 'mrds'):
             return _collect_browser_site(source)
@@ -156,6 +163,31 @@ def _decrypt_new_cipher_images():
     except SystemExit as exc:
         _log(f'[warn] 密文图自动解密中止:{exc}')
         return {'checked': 0, 'cipher': 0, 'ok': 0, 'failed': []}
+
+
+def _backfill_hl365_thumbs():
+    """采集收尾:hl365 新采文章自动补缩略图(RSS 无图,列表密文图需解密)。
+
+    幂等只补缺;纯 Python 离线路线,不依赖浏览器;无缺时零开销。
+    """
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'scripts'))
+    from thumbs_backfill import backfill_hl365_offline
+    try:
+        db = _new_db()
+        from collector.store import ObjectStore
+        with db.conn.cursor() as c:
+            c.execute("SELECT article_key FROM articles WHERE source='hl365' "
+                      "AND (thumb_object IS NULL OR thumb_object='')")
+            missing = [r['article_key'] for r in c.fetchall()]
+        if not missing:
+            return {'missing': 0, 'ok': 0, 'no_src': [], 'failed': []}
+        _log(f'hl365 {len(missing)} 篇缺缩略图,自动补抓(离线路线)')
+        return backfill_hl365_offline(db, ObjectStore(), missing)
+    except Exception as exc:  # noqa: BLE001 收尾失败不阻断采集主流程
+        _log(f'[warn] hl365 缩略图补抓失败:{type(exc).__name__}: {exc}')
+        return {'missing': 0, 'ok': 0, 'no_src': [], 'failed': []}
 
 
 def _collect_browser_site(source):

@@ -118,6 +118,10 @@
             const d = v || {};
             return d.cipher ? `密文图解密 ${d.ok}/${d.cipher}` : null;
           }
+          if (k === 'thumbs') {
+            const t = v || {};
+            return t.missing ? `缩略图补 ${t.ok}/${t.missing}` : null;
+          }
           return `${LABELS[k] || k} ${v}`;
         }).filter(Boolean);
         el.textContent = '✅ ' + (parts.join(' · ') || '成功');

@@ -148,6 +148,79 @@ def backfill_hl365(db, store, missing, browser):
     print(f'hl365 完成:本次 {ok}/{len(missing)}')
 
 
+def backfill_hl365_offline(db, store, missing, js_files=None):
+    """hl365 缺失缩略图补抓——纯 Python 路线,不依赖浏览器(2026-09-29 验证 13/13)。
+
+    与 backfill_hl365 的差异:解密不走页面 decryptImage,用静态提取的密钥
+    (article_img_decrypt._load_keyiv)离线解。浏览器不可用/定时场景用这条。
+    返回 {'missing': n, 'ok': n, 'no_src': [keys], 'failed': [(key, why)]}。
+    """
+    import os as _os
+    site = load_config()['sites']['hl365']
+    base = site['home'].rstrip('/')
+    card_map = {}
+    for page in range(1, 13):
+        url = base if page == 1 else f'{base}/page/{page}/'
+        try:
+            resp = fetch.get(url)
+            card_map.update(re.findall(
+                r'id="post-card-(\d+)"[^>]*>.{0,400}?z-image-loader-url="([^"]+)"',
+                resp.text, re.S))
+        except Exception as exc:  # noqa: BLE001 单页失败继续翻
+            print(f'  [warn] 列表第 {page} 页失败: {type(exc).__name__}', file=sys.stderr)
+        if all(k in card_map for k in missing):
+            break
+        time.sleep(2)
+
+    if js_files is None:
+        js_files = [p for p in _os.environ.get('MELON_DECRYPT_JS', '').split(',') if p]
+    key, iv = None, None
+    stats = {'missing': len(missing), 'ok': 0, 'no_src': [], 'failed': []}
+    if missing and js_files:
+        try:
+            from article_img_decrypt import _load_keyiv, _decrypt_one
+            key, iv = _load_keyiv(js_files)
+        except SystemExit as exc:
+            print(f'[warn] 密钥提取失败,密文兜底不可用: {exc}', file=sys.stderr)
+    for k in missing:
+        surl = card_map.get(k)
+        if not surl:
+            try:
+                resp = fetch.get(f'{base}/archives/{k}.html')
+                m = re.search(r'itemprop="image" content="([^"]+)"', resp.text)
+                if m:
+                    surl = m.group(1)
+            except Exception:  # noqa: BLE001 兜底失败按无图源计
+                pass
+            time.sleep(2)
+        if not surl:
+            stats['no_src'].append(k)
+            continue
+        cipher = _fetch_cipher(surl)
+        if not cipher:
+            stats['failed'].append((k, '密文拉取失败'))
+            continue
+        if _ext_of(cipher):
+            raw = cipher
+        elif key:
+            pt = _decrypt_one(cipher, key, iv)
+            if not pt or not _ext_of(pt):
+                stats['failed'].append((k, f'解密失败 头{cipher[:4].hex()}'))
+                continue
+            raw = pt
+        else:
+            stats['failed'].append((k, '密文未解(无 MELON_DECRYPT_JS)'))
+            continue
+        if _save_thumb(db, store, 'hl365', k, raw):
+            stats['ok'] += 1
+        else:
+            stats['failed'].append((k, f'魔数异常 {raw[:4].hex()}'))
+        time.sleep(2)
+    print(f"hl365 离线补缩略图:{stats['ok']}/{stats['missing']},"
+          f"无图源 {len(stats['no_src'])},失败 {len(stats['failed'])}")
+    return stats
+
+
 def backfill_article_firstimg(db, store, source, missing, browser):
     """wacg51/mrds 路线:文章页首图是明文 data:URI,直接取当缩略图。
 
