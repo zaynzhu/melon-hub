@@ -237,7 +237,7 @@ class Database:
     def get_setting(self, key, default=None):
         with self._lock:
             row = self._exec(
-                f'SELECT value FROM settings WHERE key={self.ph}', (key,)).fetchone()
+                f'SELECT value FROM settings WHERE `key`={self.ph}', (key,)).fetchone()
         return dict(row)['value'] if row else default
 
     def set_setting(self, key, value):
