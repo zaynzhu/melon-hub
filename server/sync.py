@@ -7,6 +7,7 @@
 - 手动同步与定时采集共用一把锁:手动冲突返回 409,定时冲突跳过本 tick
 - 定时只调度 hl365;wacg51/mrds 依赖宿主机 kimi-webbridge,仅手动可点
 """
+import json
 import os
 import socket
 import threading
@@ -131,17 +132,55 @@ def _manual_run(sources):
 def _collect_source(source, pages=1):
     """采集单站并返回结果 dict;任何异常都不外抛。"""
     try:
+        result = None
         if source == 'hl365':
             from collector import hl365
             stats = hl365.collect(pages=pages)
             stats['img_decrypted'] = _decrypt_new_cipher_images()
             stats['thumbs'] = _backfill_hl365_thumbs()
-            return {'status': 'ok', 'stats': stats, 'error': ''}
-        if source in ('wacg51', 'mrds'):
-            return _collect_browser_site(source)
-        return {'status': 'error', 'stats': None, 'error': f'站点 {source} 无采集器'}
+            result = {'status': 'ok', 'stats': stats, 'error': ''}
+        elif source in ('wacg51', 'mrds'):
+            result = _collect_browser_site(source)
+        else:
+            result = {'status': 'error', 'stats': None, 'error': f'站点 {source} 无采集器'}
+        # 终检闸门:采集完成≠数据可用,逐类资源盘点,缺口显式亮出(2026-09-29 用户明令)
+        result['gaps'] = _audit_gaps(source)
+        if any(result['gaps'].values()):
+            _log(f"[gap] {source} 仍有缺口:{result['gaps']}")
+        return result
     except Exception as exc:  # noqa: BLE001 单站失败不中断整批
         return {'status': 'error', 'stats': None, 'error': str(exc)}
+
+
+def _audit_gaps(source):
+    """终检:盘点该站三类资源缺口——无正文 / 无缩略图 / 图片下载失败。
+
+    只读盘点,不做修复(修复职责在各收尾步骤);返回计数 dict,
+    任何非零都是"这次采集没把事做完整"的显式证据。
+    """
+    try:
+        db = _new_db()
+        with db.conn.cursor() as c:
+            c.execute(
+                f"SELECT COUNT(*) AS n FROM articles WHERE source='{source}' "
+                "AND (content_object IS NULL OR content_object='')")
+            no_content = c.fetchone()['n']
+            c.execute(
+                f"SELECT COUNT(*) AS n FROM articles WHERE source='{source}' "
+                "AND (thumb_object IS NULL OR thumb_object='')")
+            no_thumb = c.fetchone()['n']
+            c.execute(
+                f"SELECT images_json FROM articles WHERE source='{source}' "
+                "AND images_json IS NOT NULL AND images_json != '[]'")
+            bad_imgs = sum(
+                1 for row in c.fetchall()
+                for im in json.loads(row['images_json'])
+                if not im.get('key'))
+        db.close()
+        return {'no_content': no_content, 'no_thumb': no_thumb, 'img_failed': bad_imgs}
+    except Exception as exc:  # noqa: BLE001 终检失败不阻断主流程,但必须留痕
+        _log(f'[warn] {source} 终检失败:{type(exc).__name__}: {exc}')
+        return {'no_content': -1, 'no_thumb': -1, 'img_failed': -1}
 
 
 def _decrypt_new_cipher_images():
@@ -198,6 +237,12 @@ def _collect_browser_site(source):
     try:
         browser_fetch.ensure_ready()
         stats = dict(typecho_collector.collect_list(source))
+        # 列表页正开着,顺手采缩略图(卡片 base64 明文,幂等只补缺)——
+        # 不采的话新文章卡片没图(2026-09-29 hl365 同坑,用户明令不再犯)
+        try:
+            typecho_collector.collect_thumbs(source)
+        except Exception as exc:  # noqa: BLE001 缩略图失败不挡正文
+            _log(f'[warn] {source} 缩略图采集失败:{type(exc).__name__}: {exc}')
         stats.update(typecho_collector.collect_articles(source, limit=12))
         stats['img_decrypted'] = _decrypt_new_cipher_images()
         return {'status': 'ok', 'stats': stats, 'error': ''}

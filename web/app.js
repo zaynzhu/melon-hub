@@ -124,7 +124,12 @@
           }
           return `${LABELS[k] || k} ${v}`;
         }).filter(Boolean);
-        el.textContent = '✅ ' + (parts.join(' · ') || '成功');
+        const gaps = res.gaps || {};
+        const gapText = Object.entries(gaps)
+          .filter(([, n]) => n > 0)
+          .map(([k, n]) => ({ no_content: '缺正文', no_thumb: '缺缩略图', img_failed: '图下载失败' }[k] + ' ' + n))
+          .join(' · ');
+        el.textContent = '✅ ' + (parts.join(' · ') || '成功') + (gapText ? ` ⚠️ ${gapText}` : '');
         el.className = 'sync-site-status ok';
         anyDone = true;
       } else if (res.status === 'pending') {
