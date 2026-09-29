@@ -59,6 +59,23 @@ CREATE INDEX IF NOT EXISTS idx_articles_source_pub
   ON articles(source, published_at DESC);
 """
 
+# 通用键值配置(定时采集等运行时配置,MySQL 里 key 是保留字需反引号)
+_SCHEMA_SETTINGS_MYSQL = """
+CREATE TABLE IF NOT EXISTS settings (
+  `key` VARCHAR(64) NOT NULL PRIMARY KEY,
+  `value` TEXT,
+  updated_at VARCHAR(32) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+"""
+
+_SCHEMA_SETTINGS_SQLITE = """
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  updated_at TEXT NOT NULL
+)
+"""
+
 # 已存在的旧库补列(列已存在时报错忽略)
 _ALTER_THUMB = {
     'mysql': 'ALTER TABLE articles ADD COLUMN thumb_object VARCHAR(255) DEFAULT NULL',
@@ -95,6 +112,7 @@ class Database:
         # WAL:容器内定时采集与宿主机浏览器采集可能跨进程并发读写
         self.conn.execute('PRAGMA journal_mode=WAL')
         self.conn.executescript(_SCHEMA_SQLITE)
+        self.conn.executescript(_SCHEMA_SETTINGS_SQLITE)
         try:
             self.conn.execute(_ALTER_THUMB['sqlite'])
             self.conn.commit()
@@ -118,6 +136,7 @@ class Database:
         self.conn = pymysql.connect(database=dbname, cursorclass=pymysql.cursors.DictCursor, **common)
         with self.conn.cursor() as c:
             c.execute(_SCHEMA_MYSQL)
+            c.execute(_SCHEMA_SETTINGS_MYSQL)
             try:
                 c.execute(_ALTER_THUMB['mysql'])
             except Exception:
@@ -214,6 +233,27 @@ class Database:
         with self._lock:
             rows = self._exec('SELECT * FROM articles').fetchall()
         return [dict(r) for r in rows]
+
+    def get_setting(self, key, default=None):
+        with self._lock:
+            row = self._exec(
+                f'SELECT value FROM settings WHERE key={self.ph}', (key,)).fetchone()
+        return dict(row)['value'] if row else default
+
+    def set_setting(self, key, value):
+        now = _now()
+        with self._lock:
+            if self._mysql:
+                self._exec(
+                    'INSERT INTO settings (`key`, `value`, updated_at) VALUES (%s,%s,%s) '
+                    'ON DUPLICATE KEY UPDATE `value`=VALUES(`value`), updated_at=VALUES(updated_at)',
+                    (key, value, now))
+            else:
+                self._exec(
+                    f'INSERT INTO settings (key, value, updated_at) VALUES ({self.ph},{self.ph},{self.ph}) '
+                    f'ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at',
+                    (key, value, now))
+                self.conn.commit()
 
     def close(self):
         self.conn.close()

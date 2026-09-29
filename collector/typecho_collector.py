@@ -46,13 +46,14 @@ def collect_list(site_id, page_url=None):
 
 
 def collect_articles(site_id, limit=12):
-    """逐篇抓取 pending 条目的正文并入库。"""
+    """逐篇抓取 pending 条目的正文并入库,返回统计 dict。"""
     site = _site(site_id)
     db = Database()
     store = ObjectStore()
     pending = [r for r in db.list_articles(site_id, limit=500)
                if r['status'] == 'pending'][:limit]
     print(f'{site_id} 待抓正文 {len(pending)} 篇')
+    stats = {'done': 0, 'failed': 0}
 
     for row in pending:
         url = row['url']
@@ -60,11 +61,13 @@ def collect_articles(site_id, limit=12):
             html, _ = browser_fetch.fetch_rendered(url, wait_selector='.post-content')
         except Exception as exc:  # noqa: BLE001 单篇失败(含 daemon 超时)不中断整批
             print(f'  [warn] 页面抓取失败,跳过 {url}: {exc}', file=sys.stderr)
+            stats['failed'] += 1
             time.sleep(2)
             continue
         cleaned, image_urls = typecho.parse_article(html)
         if not cleaned:
             print(f'  [warn] 正文容器缺失,跳过 {url}', file=sys.stderr)
+            stats['failed'] += 1
             continue
         time.sleep(2)  # 同一浏览器连续导航,保持频控
         images = download_images(image_urls, row['article_key'], store,
@@ -94,7 +97,10 @@ def collect_articles(site_id, limit=12):
             title_hash=sha16(row['title']),
             content_hash=sha16(clean_text(cleaned)),
             content_object=object_key, images=images, status='ok')
+        stats['done'] += 1
         print(f'  [正文] {site_id}/{row["article_key"]} 入库({len(images)} 图)')
+    print(f'{site_id} 正文完成:{stats["done"]} 篇,失败 {stats["failed"]} 篇')
+    return stats
 
 
 def collect_thumbs(site_id, limit=40, page_url=None):
