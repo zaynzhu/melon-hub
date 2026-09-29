@@ -1,20 +1,33 @@
-"""melon-hub 轻后端:列表、详情、手动刷新三个接口 + 静态资源。
+"""melon-hub 轻后端:列表、详情、手动同步、定时配置接口 + 静态资源。
 
 启动:.venv/bin/python -m uvicorn server.app:app --port 8787
 """
 import json
 import os
+import re
+from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 
 from collector.config import data_dir, load_config, project_root
 from collector.store import Database, ObjectStore
+from server import sync
 
-app = FastAPI(title='melon-hub', docs_url=None, redoc_url=None)
 db = Database()
 store = ObjectStore()
+
+_DAILY_AT_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    sync.start_scheduler(db)
+    yield
+
+
+app = FastAPI(title='melon-hub', docs_url=None, redoc_url=None, lifespan=lifespan)
 
 
 def _source_url(row):
@@ -73,13 +86,41 @@ def article_detail(source: str, article_key: str):
     return payload
 
 
-@app.post('/api/refresh/{source}')
-def refresh(source: str):
-    if source == 'hl365':
-        from collector import hl365
-        stats = hl365.collect(pages=1)
-        return {'status': 'ok', 'stats': stats}
-    raise HTTPException(400, f'站点 {source} 的采集器尚未接入(需浏览器路线)')
+@app.post('/api/sync')
+def manual_sync(sources: list[str] = Body(..., embed=True)):
+    valid = sync.valid_sources()
+    bad = [s for s in sources if s not in valid]
+    if bad:
+        raise HTTPException(400, f'未知站点:{",".join(bad)}')
+    if not sources:
+        raise HTTPException(400, 'sources 不能为空')
+    ok, message = sync.start_manual_sync(sources)
+    if not ok:
+        raise HTTPException(409, message)
+    return {'status': 'started', 'sources': sources}
+
+
+@app.get('/api/sync/status')
+def sync_status():
+    return sync.get_status(db)
+
+
+@app.get('/api/settings')
+def get_settings():
+    return sync.read_schedule_config(db)
+
+
+@app.post('/api/settings')
+def save_settings(interval_hours: int = Body(..., embed=True),
+                 daily_at: str = Body(..., embed=True)):
+    if interval_hours < 0 or interval_hours > 24:
+        raise HTTPException(400, 'interval_hours 需在 0-24 之间(0 表示关闭)')
+    if daily_at and not _DAILY_AT_RE.match(daily_at):
+        raise HTTPException(400, 'daily_at 需为 HH:MM 格式(24 小时制),留空表示关闭')
+    db.set_setting(sync.KEY_INTERVAL, str(interval_hours))
+    db.set_setting(sync.KEY_DAILY, daily_at)
+    sync.reset_timers_after_save(db)
+    return sync.read_schedule_config(db)
 
 
 # 本地对象存储回退:图片与正文 JSON 由 /objects/<key> 提供
