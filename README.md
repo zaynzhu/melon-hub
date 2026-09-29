@@ -84,7 +84,7 @@ docker run -d --name melon-hub -p 8787:8787 -v melon-data:/data melon-hub
 ### 历史补齐与缩略图
 
 ```bash
-.venv/bin/python -m collector.hl365 --backfill           # 列表翻页入库 + 纯文字正文
+.venv/bin/python -m collector.hl365 --backfill           # 列表翻页入库 + 正文与正文图入库
 .venv/bin/python -m collector.wacg51 --backfill --pages 4
 .venv/bin/python -m collector.wacg51 --thumbs            # 补抓列表缩略图(两站通用)
 .venv/bin/python scripts/thumbs_backfill.py              # 三站缩略图兜底补抓(幂等只补缺)
@@ -111,7 +111,8 @@ docker run -d --name melon-hub -p 8787:8787 -v melon-data:/data melon-hub
 | ✅ | MySQL + RustFS 存储、本地自动回退 |
 | ✅ | 历史文章翻页补齐、列表缩略图采集 |
 | ✅ | 三栏总览视图、回家路页自动发现新镜像 |
-| 📋 | 跨站去重视图 |
+| ✅ | 正文密文图批量解密入库（2788 张，2026-09-29） |
+| ⏸️ | 跨站去重视图（实测真重复仅 2-3 组，语料上量后再评估） |
 | 📋 | Docker 镜像构建验证 |
 
 ---

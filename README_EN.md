@@ -84,7 +84,7 @@ The entrypoint collects hl365 once on boot and then hourly; API and frontend are
 ### History backfill and thumbnails
 
 ```bash
-.venv/bin/python -m collector.hl365 --backfill           # paginate list pages + text-only articles
+.venv/bin/python -m collector.hl365 --backfill           # paginate list pages + articles with inline images
 .venv/bin/python -m collector.wacg51 --backfill --pages 4
 .venv/bin/python -m collector.wacg51 --thumbs            # backfill list thumbnails (both sites)
 .venv/bin/python scripts/thumbs_backfill.py              # fallback thumbnail backfill for all three sites (idempotent)
@@ -111,7 +111,8 @@ Switch sites or the timeline view from the top bar, click any card for the fulls
 | ✅ | MySQL + RustFS storage with local fallback |
 | ✅ | Paginated history backfill and list thumbnail collection |
 | ✅ | Three-column overview and homeway mirror auto-discovery |
-| 📋 | Cross-site dedup view |
+| ✅ | Batch decryption of encrypted article images (2,788 images, 2026-09-29) |
+| ⏸️ | Cross-site dedup view (only 2-3 real duplicates found; revisit when corpus grows) |
 | 📋 | Docker image build verification |
 
 ---

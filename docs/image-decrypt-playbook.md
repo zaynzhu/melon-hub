@@ -168,7 +168,7 @@ navigate 文章页 → 取 .post-content 第一张 img 的 data:src.split(',')[1
 **死法**：`browser_fetch.ensure_ready()` 抛错,全部浏览器路线停摆。
 
 **救法（按优先级）**：
-1. **hl365 不受影响**：正文走 RSS 直连无浏览器,缩略图解密也只需要页面 JS——如果 daemon 永久失联,可以把 `image.*.js` 的 AES-CBC 密钥硬编码提取出来,纯 Python 复现（CryptoJS 的 AES=标准 AES-CBC,密钥/IV 都从 js 里抠出来即可）。**这是无浏览器备选,本期没实现,但见 `scripts/thumbs_backfill.py:_decrypt_via_page` 注释有思路**。
+1. **hl365 不受影响**：正文走 RSS 直连无浏览器,缩略图解密也只需要页面 JS——如果 daemon 永久失联,可以把 `image.*.js` 的 AES-CBC 密钥硬编码提取出来,纯 Python 复现（CryptoJS 的 AES=标准 AES-CBC,密钥/IV 都从 js 里抠出来即可）。**这条无浏览器备选已实现:`scripts/article_img_decrypt.py` 就是该路线（2026-09-29）**,提取函数 `_extract_keyiv` 可直接复用。
 2. **wacg51/mrds 正文与列表**：必须真实浏览器(daemon 挂了没法过 CF)。等 daemon 恢复或用 `--list-only` 只跑有 RSS 的站。
 3. daemon 挂了的识别：连接 127.0.0.1:10086 拒绝。手动 `~/.kimi-webbridge/bin/kimi-webbridge restart` 后重启。
 
