@@ -123,6 +123,16 @@ def save_settings(interval_hours: int = Body(..., embed=True),
     return sync.read_schedule_config(db)
 
 
+class NoCacheFiles(StaticFiles):
+    """静态资源禁强缓存:页面/JS 改版后浏览器旧缓存会一直占着(2026-09-29 实坑)。
+    no-cache 仍走 ETag 协商,文件没变时 304 不重传。"""
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers['Cache-Control'] = 'no-cache'
+        return resp
+
+
 # 本地对象存储回退:图片与正文 JSON 由 /objects/<key> 提供
 _objects_dir = os.path.join(data_dir(), 'objects')
 os.makedirs(_objects_dir, exist_ok=True)
@@ -131,4 +141,4 @@ app.mount('/objects', StaticFiles(directory=_objects_dir), name='objects')
 # 前端静态站(web/),放在 API 之后兜底
 _web_dir = os.path.join(project_root(), 'web')
 os.makedirs(_web_dir, exist_ok=True)
-app.mount('/', StaticFiles(directory=_web_dir, html=True), name='web')
+app.mount('/', NoCacheFiles(directory=_web_dir, html=True), name='web')
