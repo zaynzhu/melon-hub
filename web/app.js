@@ -34,21 +34,131 @@
       btn.addEventListener('click', () => switchTab(s.id));
       tabs.appendChild(btn);
     }
-    // 刷新按钮只对已接入采集器的站点可用
-    $('refresh-btn').addEventListener('click', async () => {
-      if (!state.current) return alert('请先选择单个站点再刷新');
-      const btn = $('refresh-btn');
-      btn.disabled = true;
-      try {
-        await api(`/api/refresh/${state.current}`, { method: 'POST' });
-        await switchTab(state.current);
-      } catch (e) {
-        alert('刷新失败:' + e.message);
-      } finally {
-        btn.disabled = false;
-      }
-    });
+    // 同步面板:三站复选默认全选,开始后逐站显示状态
+    initSyncPanel();
   }
+
+  // ---- 同步面板 ----
+  const syncState = { open: false, polling: null, done: false };
+
+  function initSyncPanel() {
+    const backdrop = $('sync-backdrop');
+    const sitesWrap = $('sync-sites');
+    for (const s of state.sources.filter((x) => x.id)) {
+      const row = document.createElement('label');
+      row.className = 'sync-site';
+      row.dataset.source = s.id;
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = true;
+      const name = document.createElement('span');
+      name.className = 'sync-site-name';
+      name.textContent = s.name;
+      const status = document.createElement('span');
+      status.className = 'sync-site-status';
+      status.textContent = '';
+      row.append(box, name, status);
+      sitesWrap.appendChild(row);
+    }
+    $('sync-btn').addEventListener('click', () => {
+      backdrop.classList.remove('hidden');
+      syncState.open = true;
+      refreshSyncStatus();
+    });
+    $('sync-close').addEventListener('click', closeSyncPanel);
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) closeSyncPanel();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && syncState.open) closeSyncPanel();
+    });
+    $('sync-start').addEventListener('click', startSync);
+  }
+
+  function closeSyncPanel() {
+    $('sync-backdrop').classList.add('hidden');
+    syncState.open = false;
+    clearInterval(syncState.polling);
+    syncState.polling = null;
+    if (syncState.done) {
+      syncState.done = false;
+      loadArticles(true); // 同步有产出时刷新当前列表
+    }
+  }
+
+  async function refreshSyncStatus() {
+    let st;
+    try {
+      st = await api('/api/sync/status');
+    } catch (e) {
+      $('sync-note').textContent = '状态查询失败:' + e.message;
+      return;
+    }
+    const rows = document.querySelectorAll('.sync-site');
+    const bySource = {};
+    for (const r of st.results ? Object.entries(st.results) : []) bySource[r[0]] = r[1];
+    let anyDone = false;
+    for (const row of rows) {
+      const src = row.dataset.source;
+      const el = row.querySelector('.sync-site-status');
+      const res = bySource[src];
+      if (!res) {
+        el.textContent = '未选';
+        el.className = 'sync-site-status muted';
+        continue;
+      }
+      if (res.status === 'running') {
+        el.textContent = '⏳ 进行中…';
+        el.className = 'sync-site-status running';
+      } else if (res.status === 'ok') {
+        const stats = res.stats || {};
+        const LABELS = { new: '新增', updated: '更新', skipped: '跳过', done: '正文', failed: '失败' };
+        const parts = Object.entries(stats).map(([k, v]) => `${LABELS[k] || k} ${v}`);
+        el.textContent = '✅ ' + (parts.join(' · ') || '成功');
+        el.className = 'sync-site-status ok';
+        anyDone = true;
+      } else if (res.status === 'pending') {
+        el.textContent = '⏸ 排队中';
+        el.className = 'sync-site-status muted';
+      } else {
+        el.textContent = '❌ ' + res.error;
+        el.className = 'sync-site-status error';
+        anyDone = true;
+      }
+    }
+    const note = $('sync-note');
+    if (st.running) {
+      note.textContent = st.trigger === 'schedule'
+        ? '定时采集中,完成后可再手动同步…'
+        : '采集进行中…浏览器站单站约需数分钟,可关闭面板后台继续';
+    } else {
+      note.textContent = '空闲';
+    }
+    syncState.done = anyDone && !st.running;
+  }
+
+  async function startSync() {
+    const chosen = [...document.querySelectorAll('.sync-site input:checked')]
+      .map((el) => el.closest('.sync-site').dataset.source);
+    if (!chosen.length) return;
+    try {
+      await api('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sources: chosen }),
+      });
+      $('sync-note').textContent = '已开始…';
+    } catch (e) {
+      $('sync-note').textContent = '启动失败:' + e.message;
+      return;
+    }
+    refreshSyncStatus();
+  }
+
+  // 面板打开期间 2 秒轮询状态
+  setInterval(() => {
+    if (syncState.open) refreshSyncStatus();
+  }, 2000);
 
   async function switchTab(source) {
     state.current = source;

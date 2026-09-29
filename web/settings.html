@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>melon-hub · 设置</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/" style="text-decoration: none; color: inherit;">🍉 melon-hub</a>
+      <span class="settings-page-label">同步与定时设置</span>
+    </div>
+  </header>
+
+  <main class="feed-wrap settings-wrap">
+    <div class="settings-card">
+      <div class="settings-card-title">定时采集</div>
+      <div class="settings-hint">
+        定时任务只采集 hl365（RSS 直连，无需浏览器）。51吃瓜 / 每日大赛需本机浏览器环境，请用首页「同步」按钮或命令行采集器手动拉取。
+      </div>
+
+      <div class="settings-row">
+        <label class="settings-row-main">
+          <span class="settings-row-title">每隔固定小时采集</span>
+          <span class="settings-row-desc">勾选后每隔 N 小时增量采集一次（拉 1 页约 10 条）</span>
+        </label>
+        <input type="checkbox" id="interval-enabled" class="settings-switch">
+        <input type="number" id="interval-hours" min="1" max="24" step="1" placeholder="6"
+               class="settings-input settings-hours">
+        <span class="settings-unit">小时</span>
+      </div>
+
+      <div class="settings-row">
+        <label class="settings-row-main">
+          <span class="settings-row-title">每天定时采集一次</span>
+          <span class="settings-row-desc">到点后当天采集一次（拉 3 页约 30 条），时区 Asia/Shanghai</span>
+        </label>
+        <input type="checkbox" id="daily-enabled" class="settings-switch">
+        <input type="time" id="daily-at" value="03:00" class="settings-input settings-time">
+      </div>
+
+      <div class="settings-actions">
+        <button id="settings-save" class="sync-start-btn">保存</button>
+        <span class="settings-saved hidden" id="settings-saved">已保存 ✓</span>
+      </div>
+      <div class="settings-error hidden" id="settings-error"></div>
+    </div>
+
+    <div class="settings-card">
+      <div class="settings-card-title">运行状态</div>
+      <div class="settings-status" id="settings-status">载入中…</div>
+    </div>
+  </main>
+
+  <script src="/settings.js"></script>
+</body>
+</html>

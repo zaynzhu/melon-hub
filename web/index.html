@@ -19,10 +19,13 @@
           <button class="view-btn" data-view="timeline" title="时间线">☰</button>
           <button class="view-btn" data-view="columns" title="三栏总览">⊞</button>
         </div>
-        <button class="refresh-btn" id="refresh-btn" title="拉取最新(仅已接入站点)">
+        <button class="refresh-btn" id="sync-btn" title="同步采集(可选站点)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-          <span>刷新</span>
+          <span>同步</span>
         </button>
+        <a class="refresh-btn" id="settings-link" href="/settings.html" title="同步与定时设置">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.15 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </a>
       </div>
     </div>
   </header>
@@ -59,6 +62,25 @@
         <div class="article-content" id="article-content"></div>
       </div>
     </aside>
+  </div>
+
+  <!-- 同步面板 -->
+  <div class="sync-backdrop hidden" id="sync-backdrop">
+    <div class="sync-panel" role="dialog" aria-modal="true">
+      <div class="sync-header">
+        <span class="sync-title">同步采集</span>
+        <button class="reader-close" id="sync-close" title="关闭" aria-label="关闭同步面板">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="sync-body">
+        <div class="sync-sites" id="sync-sites"></div>
+        <div class="sync-actions">
+          <button class="sync-start-btn" id="sync-start">开始同步</button>
+        </div>
+        <div class="sync-note" id="sync-note"></div>
+      </div>
+    </div>
   </div>
 
   <script src="/app.js"></script>
