@@ -138,7 +138,7 @@ This is a personal-use project; feature PRs are not accepted for now, but issues
 <details>
 <summary>Why do some images show placeholders?</summary>
 
-Some sites distribute images through an encrypted delivery pipeline that currently fails for every client (even on the source site itself). The frontend detects broken images and swaps in placeholders automatically — text reading is unaffected. Once the source recovers, a repair script can backfill the real images.
+All three sites distribute images over an AES-CBC encrypted pipeline (key embedded in site JS); this project has decrypted and stored all 2,788 article images in batch (2026-09-29), on top of full thumbnail coverage. A remaining placeholder means the source image itself is gone; the frontend degrades gracefully and text reading is unaffected.
 </details>
 
 <details>

@@ -130,7 +130,7 @@ navigate 文章页 → 取 .post-content 第一张 img 的 data:src.split(',')[1
 
 - `docs/handoffs/melon-hub.md` 中"图片真图获取依赖源站解密链路恢复，非本项目代码问题"→ 已被本文第 2 节推翻。
 - 记忆层 `melon-hub-upstream-corrections` 已同步此结论（2026-09-20）。
-- `scripts/fix_images_browser.py`（正文真图修复）现在有了更优路线：同一解密原理可批量修复正文密文图（`images_json` 里 1800+ 张密文对象），待做。
+- `scripts/fix_images_browser.py`（正文真图修复）现在有了更优路线：同一解密原理可批量修复正文密文图——**2026-09-29 已完成**（2788 张全量），见第 8 节。
 
 ---
 
@@ -172,7 +172,7 @@ navigate 文章页 → 取 .post-content 第一张 img 的 data:src.split(',')[1
 2. **wacg51/mrds 正文与列表**：必须真实浏览器(daemon 挂了没法过 CF)。等 daemon 恢复或用 `--list-only` 只跑有 RSS 的站。
 3. daemon 挂了的识别：连接 127.0.0.1:10086 拒绝。手动 `~/.kimi-webbridge/bin/kimi-webbridge restart` 后重启。
 
-### 场景 E：正文图片要批量修复（本文遗留待做项）
+### 场景 E：正文图片要批量修复（2026-09-29 已完成，见第 8 节）
 
 **现状**：`images_json` 里 1800+ 张正文图是密文对象,前端显示占位。
 
@@ -182,4 +182,22 @@ navigate 文章页 → 取 .post-content 第一张 img 的 data:src.split(',')[1
 
 - `docs/handoffs/melon-hub.md` 中"图片真图获取依赖源站解密链路恢复，非本项目代码问题"→ 已被本文第 2 节推翻。
 - 记忆层 `melon-hub-upstream-corrections` 已同步此结论（2026-09-20）。
-- `scripts/fix_images_browser.py`（正文真图修复）现在有了更优路线：同一解密原理可批量修复正文密文图（`images_json` 里 1800+ 张密文对象），待做。
+- `scripts/fix_images_browser.py`（正文真图修复）现在有了更优路线：同一解密原理可批量修复正文密文图——**2026-09-29 已完成**（2788 张全量），见第 8 节。
+
+---
+
+## 8. 正文密文图批量修复（2026-09-29 完成,`scripts/article_img_decrypt.py`）
+
+**成果**:全库 2788 张正文密文对象（hl365 138 / mrds 1804 / wacg51 846）全部解密覆盖回 RustFS 同 key,零失败;格式分布 2774 JPEG + 14 PNG;库存复查零密文残留,三站公网直链抽查全过。**密文原样备份在 `data/backup_cipher/<key>`（gitignored）**,可整体回滚。
+
+**与缩略图路线的差异**:
+- 不需要浏览器——三站 `image.*.js` 混淆程度低,密钥/IV 以字符码下划线串（`cc("102_53_...")` 形式）**明文藏在 Web Worker 的 `decryptjs` 函数里**,正则即可提取。hl365 与 mrds 的 JS 文件有字节差但**提取结果同组**（站方共用插件模板）。提取函数在脚本 `_extract_keyiv`,候选必须恰好 2 个,否则报错人工确认,不猜。
+- 不访问外站——密文对象采集时已全部落 RustFS,批量过程纯内网（下载→解密→回传）,无频率限制。
+- 解密实现:pycryptodome AES-128-CBC + PKCS7 手工去填充（填充不合法即判失败,不宽松处理）;openssl 命令行可做交叉验证（`-K`/`-iv` 传 hex,勿把密钥写进任何提交）。
+
+**脚本三阶段设计（复跑照此理解）**:
+1. 盘点:全量读对象验魔数,明文跳过/密文待解/缺失告警,幂等基础。
+2. 备份:**覆盖的硬闸门**——密文全量落 `data/backup_cipher/` 并逐一校验大小,未 100% 通过不进入覆盖阶段。
+3. 解密:首张即失败视为密钥错误整体中止（防 2788 张白跑）;之后单篇失败保留密文计入失败清单;`--limit` 小批量验证后再放量。
+
+**为什么密钥不硬编码进脚本**:仓库推送 GitHub,提交密钥等于公开站方保护机制。脚本运行时从 `--js-file` 传入的站内 JS 提取（JS 本身是公开文件）;站方换密钥（坑 14 的 `image.*.js` 版本更迭）时,curl 新版 JS 重跑脚本即可自适应。14 张 PNG 解出在 `.jpg` key 下,浏览器按字节嗅探渲染,与缩略图路线处理一致。
