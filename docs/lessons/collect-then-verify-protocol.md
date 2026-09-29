@@ -1,0 +1,42 @@
+# 采集后必校验:新采数据必须过魔数校验,一次性脚本管不到增量
+
+> 2026-09-29 真实翻车:09-29 上午批量解密 2788 张正文图宣告"图片问题终结",
+> 当天下午新采 10 篇文章又落了 176 张密文图,用户在页面上发现"黑料的图片没了"。
+> **教训:存量修复 ≠ 链路修复。** 一次性脚本只处理当时在库的对象,
+> 之后每次采集产生的新数据走原链路原样落密文,没人拦。
+
+## 坑的机制
+
+- 三站图片 CDN 对所有 HTTP 客户端返回 AES-CBC 加密字节(头字节 `4fe8…`/`093d…`,
+  非 JPEG/PNG/GIF/WEBP 魔数),`download_images` 只看 HTTP 200 + Content-Type
+  就落盘,**不校验字节内容**,密文图就此入库。
+- 前端 `<img>` 渲染不出密文,用户看到的是"图片没了"——但接口 200、对象存在、
+  字节数正常,日志零报错。**"采集成功"的统计(new/updated)完全掩盖了图片不可用。**
+- 09-29 的 `scripts/article_img_decrypt.py` 是存量批处理,跑完那一刻是干净的,
+  之后每次 `collect()` 新落的密文没有任何机制处理。
+
+## 修复(2026-09-29 当天,两层)
+
+1. **存量**:重跑解密脚本(幂等,明文自动跳过),196 张新密文全部解出。
+2. **根治**:`article_img_decrypt.py` 抽出 `auto_decrypt_new()`,
+   `server/sync.py` 的 `_collect_source`/`_collect_browser_site` 采集收尾自动调用:
+   全库魔数盘点(3008 对象约 10 秒,明文秒过)→ 密文自动解密 →
+   统计进 `img_decrypted` 透传到状态接口与前端面板("密文图解密 N/M")。
+   备份硬闸门与原脚本同规则;`MELON_DECRYPT_JS` 未配置时不解密但显式告警,
+   宁可暴露不静默。
+
+## 协议(以后所有采集类任务遵守)
+
+- **采集完成 ≠ 验证完成**。任何"拉数据"任务的收尾必须校验产出可用性:
+  图片查魔数(`4fe8`/`093d` 开头即密文),正文查 content.json 可解析。
+- **一次性修复脚本上线后,必须回答"下一条数据进来谁拦"**——回答不了就是没修完。
+- 判定"图片没问题"只信字节魔数,不信接口 200/Content-Type/采集统计。
+
+## 复用
+
+- 密文自动解密:`auto_decrypt_new()`(sync 链路已内建,无需手动跑);
+  存量批处理:`scripts/article_img_decrypt.py --js-file <站内 image.*.js>`。
+- 密钥 JS 留档:`~/.local/share/melon-hub/*.js`(站方换版本见
+  [image-cipher-static-key-decrypt.md](image-cipher-static-key-decrypt.md) 坑 14,
+  重 curl 新版 JS 即可自适应)。
+- 详见 `docs/image-decrypt-playbook.md` 第 8 节。
