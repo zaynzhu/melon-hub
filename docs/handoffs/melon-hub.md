@@ -66,6 +66,8 @@
 
 > **2026-09-29 增量(密文图回归 + 采集后自动解密根治)**:① 用户报"黑料的图片没了"——根因:09-29 上午批量解密只处理存量 2788 张,当天下午新采文章又落 196 张密文图(`download_images` 只认 HTTP 200 不校验字节)。**存量修复 ≠ 链路修复**,详见 `docs/lessons/collect-then-verify-protocol.md`(采集后必校验协议)。② 存量重跑解密脚本 196/196 零失败;**根治**:`article_img_decrypt.py` 抽出 `auto_decrypt_new()`,sync 采集收尾(hl365 与浏览器站两路线)自动全库魔数盘点(幂等,明文秒过)→密文自动解密→统计 `img_decrypted` 透传状态接口与前端面板("密文图解密 N/M");密钥 JS 用 `MELON_DECRYPT_JS` 环境变量配置(留档 `~/.local/share/melon-hub/`),未配置时密文保留并显式告警。③ 顺带修复:MySQL 保留字 `key` 在 `get_setting` 缺反引号(SQLite 测试漏过的真 bug,用户"hl365咋能没数据"一问拦住,生产 MySQL 读 settings 必炸)。④ 验证:真实链路再采 2 篇新文落 24 张密文,自动解密 24/24 零失败,最近 20 篇 200 张图全明文。
 
+> **2026-09-29 增量(缩略图第二实例 + 缓存坑, sess_f36fadf7 深夜)**:① 用户再报"卡片缩略图没有,正文里有图"——hl365 缩略图 09-20 一次性脚本补齐后新采的 13 篇没人补(RSS 无图),**同一"存量修复≠链路修复"模式第二实例**;存量纯 Python 离线路线补上 13/13(列表映射/文章页兜底+静态密钥解密,不依赖浏览器),根治固化 `thumbs_backfill.backfill_hl365_offline()` + sync 收尾 `_backfill_hl365_thumbs()` 自动补缺(幂等零开销,`thumbs` 统计透传前端)。② **浏览器强缓存坑**:FastAPI StaticFiles 默认无 Cache-Control,前端改版后用户浏览器一直拿旧页面(旧 JS 配新数据导致"看不到图"误报),`NoCacheFiles` 加 `Cache-Control: no-cache`(ETag 协商保留,未变 304)。③ IAB 隔离浏览器对页面 JS 有怪癖(initTabs 抛 null addEventListener,元素全在),与"不渲染 img"同族——**前端页面级验证以 headless Chrome 为准**,IAB 报错先换 headless 复现再定性。④ 验证:hl365 列表 50/50 有封面、cover 直链 200 真 JPEG;headless 全页渲染 50 卡片零报错。
+
 - **存储接入(已完成)**:`.env`(不入库)配置 MELON_DB_URL(mysql://…13306/melon_hub,自动建库)+ MELON_S3_*(RustFS 192.168.50.233:59100,桶 melon-hub 已建并设匿名读)。本地数据已迁移:`scripts/migrate_local_to_remote.py`(57 行→MySQL 零重复,344 对象→RustFS)。采集器/后端已全链路跑通 MySQL+RustFS(列表/详情/图片直链 200 实测)。
 - **图片加密问题(2026-09-29 全部解决——缩略图 356/356 + 正文图 2788/2788,见 09-20/09-29 增量块与 `docs/image-decrypt-playbook.md`)**:
   - 三站图片 CDN(hdhwqx/ndhixj)对所有 HTTP 客户端返回**加密字节**(非图片),仅站内 z-image-loader JS 解密;GIF 明文例外。
