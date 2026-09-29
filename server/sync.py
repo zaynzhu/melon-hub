@@ -127,12 +127,35 @@ def _collect_source(source, pages=1):
     try:
         if source == 'hl365':
             from collector import hl365
-            return {'status': 'ok', 'stats': hl365.collect(pages=pages), 'error': ''}
+            stats = hl365.collect(pages=pages)
+            stats['img_decrypted'] = _decrypt_new_cipher_images()
+            return {'status': 'ok', 'stats': stats, 'error': ''}
         if source in ('wacg51', 'mrds'):
             return _collect_browser_site(source)
         return {'status': 'error', 'stats': None, 'error': f'站点 {source} 无采集器'}
     except Exception as exc:  # noqa: BLE001 单站失败不中断整批
         return {'status': 'error', 'stats': None, 'error': str(exc)}
+
+
+def _decrypt_new_cipher_images():
+    """采集收尾校验:新落的密文图自动解密(三站 CDN 加密分发,见 playbook)。
+
+    全库幂等盘点(明文秒过),密文仅在配置了 MELON_DECRYPT_JS 时解密,
+    未配置则计入 failed 并打警告——宁可显式暴露也不静默留密文。
+    """
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'scripts'))
+    from article_img_decrypt import auto_decrypt_new
+    try:
+        stats = auto_decrypt_new()
+        if stats['cipher'] and not stats['ok'] and not os.environ.get('MELON_DECRYPT_JS'):
+            _log(f"[warn] {stats['cipher']} 张密文图未解密:"
+                 '配置 MELON_DECRYPT_JS 指向站内 image.*.js 后自动生效')
+        return stats
+    except SystemExit as exc:
+        _log(f'[warn] 密文图自动解密中止:{exc}')
+        return {'checked': 0, 'cipher': 0, 'ok': 0, 'failed': []}
 
 
 def _collect_browser_site(source):
@@ -144,6 +167,7 @@ def _collect_browser_site(source):
         browser_fetch.ensure_ready()
         stats = dict(typecho_collector.collect_list(source))
         stats.update(typecho_collector.collect_articles(source, limit=12))
+        stats['img_decrypted'] = _decrypt_new_cipher_images()
         return {'status': 'ok', 'stats': stats, 'error': ''}
     finally:
         try:

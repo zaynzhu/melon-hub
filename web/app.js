@@ -113,7 +113,13 @@
       } else if (res.status === 'ok') {
         const stats = res.stats || {};
         const LABELS = { new: '新增', updated: '更新', skipped: '跳过', done: '正文', failed: '失败' };
-        const parts = Object.entries(stats).map(([k, v]) => `${LABELS[k] || k} ${v}`);
+        const parts = Object.entries(stats).map(([k, v]) => {
+          if (k === 'img_decrypted') {
+            const d = v || {};
+            return d.cipher ? `密文图解密 ${d.ok}/${d.cipher}` : null;
+          }
+          return `${LABELS[k] || k} ${v}`;
+        }).filter(Boolean);
         el.textContent = '✅ ' + (parts.join(' · ') || '成功');
         el.className = 'sync-site-status ok';
         anyDone = true;

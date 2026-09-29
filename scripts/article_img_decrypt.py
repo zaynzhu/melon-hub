@@ -106,6 +106,72 @@ def _decrypt_one(cipher, key, iv):
     return pt[:-pad]
 
 
+def _load_keyiv(js_files):
+    """依次尝试多个 JS 提取密钥,返回 (key, iv);全失败抛 SystemExit。"""
+    for path in js_files:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            try:
+                return _extract_keyiv(f.read())
+            except SystemExit:
+                continue
+    raise SystemExit(f'所有 JS 均未提取到密钥: {js_files}')
+
+
+def auto_decrypt_new(js_files=None, keys=None):
+    """采集后自动校验+解密新落的密文图(供 sync 调度/手动同步收尾调用)。
+
+    与 main() 的差异:只处理本次指定的 keys(不扫全库),静默成功、
+    显式返回统计;无密文时零开销。备份硬闸门与 main() 同规则。
+    返回 {'checked': n, 'cipher': n, 'ok': n, 'failed': [keys]}。
+    """
+    store = ObjectStore()
+    db = Database()
+    checked = keys if keys is not None else _collect_keys(db)
+    plain, cipher = [], []
+    for k in checked:
+        try:
+            raw = store.get_bytes(k)
+        except FileNotFoundError:
+            continue  # 缺失不入库,重抓归 thumbs_backfill
+        (plain if _kind(raw) else cipher).append((k, raw))
+    stats = {'checked': len(checked), 'cipher': len(cipher), 'ok': 0, 'failed': []}
+    if not cipher:
+        return stats
+    if js_files is None:
+        js_files = [p for p in os.environ.get('MELON_DECRYPT_JS', '').split(',') if p]
+    if not js_files:
+        stats['failed'] = [k for k, _ in cipher]
+        print(f'[img-check] 发现 {len(cipher)} 张密文但未配 MELON_DECRYPT_JS,'
+              '未解密(密文保留)', file=sys.stderr)
+        return stats
+    key, iv = _load_keyiv(js_files)
+    # 备份硬闸门:全量备份校验通过才覆盖
+    for k, raw in cipher:
+        path = _backup_path(k)
+        if os.path.exists(path) and os.path.getsize(path) == len(raw):
+            continue
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(raw)
+    bad = [k for k, raw in cipher
+           if not (os.path.exists(_backup_path(k))
+                   and os.path.getsize(_backup_path(k)) == len(raw))]
+    if bad:
+        stats['failed'] = [k for k, _ in cipher]
+        print(f'[img-check] 备份校验失败 {len(bad)} 个,本次跳过解密', file=sys.stderr)
+        return stats
+    for k, raw in cipher:
+        pt = _decrypt_one(raw, key, iv)
+        if pt and _kind(pt):
+            store.put(k, pt)
+            stats['ok'] += 1
+        else:
+            stats['failed'].append(k)
+    print(f'[img-check] 密文图自动解密:{stats["ok"]}/{len(cipher)},'
+          f'失败 {len(stats["failed"])}(密文保留)')
+    return stats
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--js-file', action='append', required=True,
@@ -158,16 +224,7 @@ def main():
     print('备份校验通过,进入解密')
 
     # 阶段 3:解密
-    key, iv = None, None
-    for path in args.js_file:
-        with open(path, encoding='utf-8', errors='replace') as f:
-            try:
-                key, iv = _extract_keyiv(f.read())
-                break
-            except SystemExit:
-                continue
-    if key is None:
-        raise SystemExit('所有 --js-file 均未提取到密钥')
+    key, iv = _load_keyiv(args.js_file)
     print(f'密钥提取 OK(首个 JS 命中): key/IV 已从 JS 提取,首张试解验证')
 
     ok, failed = 0, []
