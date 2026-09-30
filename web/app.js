@@ -125,11 +125,21 @@
           return `${LABELS[k] || k} ${v}`;
         }).filter(Boolean);
         const gaps = res.gaps || {};
+        const GAP_LABELS = {
+          pending_content: '正文排队中',
+          no_thumb: '缺缩略图',
+          img_failed: '图下载失败',
+        };
         const gapText = Object.entries(gaps)
           .filter(([, n]) => n > 0)
-          .map(([k, n]) => ({ no_content: '缺正文', no_thumb: '缺缩略图', img_failed: '图下载失败' }[k] + ' ' + n))
+          .map(([k, n]) => {
+            if (k === 'pending_content') {
+              return `正文排队 ${n} 篇(每轮 12 篇,再同步继续)`;
+            }
+            return GAP_LABELS[k] + ' ' + n;
+          })
           .join(' · ');
-        el.textContent = '✅ ' + (parts.join(' · ') || '成功') + (gapText ? ` ⚠️ ${gapText}` : '');
+        el.textContent = '✅ ' + (parts.join(' · ') || '成功') + (gapText ? ` · ${gapText}` : '');
         el.className = 'sync-site-status ok';
         anyDone = true;
       } else if (res.status === 'pending') {

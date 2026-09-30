@@ -153,18 +153,19 @@ def _collect_source(source, pages=1):
 
 
 def _audit_gaps(source):
-    """终检:盘点该站三类资源缺口——无正文 / 无缩略图 / 图片下载失败。
+    """终检:盘点该站资源缺口——正文排队(pending)/无缩略图/图片下载失败。
 
-    只读盘点,不做修复(修复职责在各收尾步骤);返回计数 dict,
-    任何非零都是"这次采集没把事做完整"的显式证据。
+    只读盘点,不做修复(修复职责在各收尾步骤);返回计数 dict。
+    pending_content 是浏览器站正常排队(每轮限抓 12 篇,下轮继续),
+    与 no_thumb/img_failed 同透传前端,让"还要几轮"可见,不让用户猜。
     """
     try:
         db = _new_db()
         with db.conn.cursor() as c:
             c.execute(
                 f"SELECT COUNT(*) AS n FROM articles WHERE source='{source}' "
-                "AND (content_object IS NULL OR content_object='')")
-            no_content = c.fetchone()['n']
+                "AND status='pending'")
+            pending = c.fetchone()['n']
             c.execute(
                 f"SELECT COUNT(*) AS n FROM articles WHERE source='{source}' "
                 "AND (thumb_object IS NULL OR thumb_object='')")
@@ -177,10 +178,11 @@ def _audit_gaps(source):
                 for im in json.loads(row['images_json'])
                 if not im.get('key'))
         db.close()
-        return {'no_content': no_content, 'no_thumb': no_thumb, 'img_failed': bad_imgs}
+        return {'pending_content': pending, 'no_thumb': no_thumb,
+                'img_failed': bad_imgs}
     except Exception as exc:  # noqa: BLE001 终检失败不阻断主流程,但必须留痕
         _log(f'[warn] {source} 终检失败:{type(exc).__name__}: {exc}')
-        return {'no_content': -1, 'no_thumb': -1, 'img_failed': -1}
+        return {'pending_content': -1, 'no_thumb': -1, 'img_failed': -1}
 
 
 def _decrypt_new_cipher_images():
