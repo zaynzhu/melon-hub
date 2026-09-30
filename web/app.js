@@ -317,7 +317,7 @@
       state.cache = state.cache.concat(data.articles);
       meta.textContent = `共 ${data.total} 条${state.current ? ' · ' + sourceName(state.current) : ''}`;
       render();
-      loadMore.classList.toggle('hidden', data.total < state.limit);
+      loadMore.classList.toggle('hidden', state.cache.length >= data.total);
       if (!state.cache.length) {
         meta.textContent = '暂无数据 — 点击"刷新"拉取,或先运行采集器';
       }
@@ -428,6 +428,12 @@
   });
 
   // ---- 启动 ----
+  // 顶栏滚动反馈:页面离开顶部后给顶栏加投影(纯表现,不影响功能)
+  const topbar = document.querySelector('.topbar');
+  const onScroll = () => topbar.classList.toggle('is-scrolled', window.scrollY > 8);
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+
   initTabs().then(() => loadArticles(true)).catch((e) => {
     meta.textContent = '初始化失败(后端未启动?):' + e.message;
   });
