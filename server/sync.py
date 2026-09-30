@@ -231,6 +231,47 @@ def _backfill_hl365_thumbs():
         return {'missing': 0, 'ok': 0, 'no_src': [], 'failed': []}
 
 
+def _backfill_browser_site_thumbs(source, browser):
+    """采集收尾:wacg51/mrds 新采文章补缩略图(文章页首图明文 data:URI 路线)。
+
+    collect_thumbs 只能拿到当前列表页卡(40 张上限),新采/翻出去的文章会漏。
+    复用 scripts/thumbs_backfill.backfill_article_firstimg,浏览器已在当前会话不浪费;
+    幂等只补缺;无缺时零开销。Docker 场景必须自动跑(2026-09-30 用户明令)。
+    """
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'scripts'))
+    from thumbs_backfill import backfill_article_firstimg
+    try:
+        db = _new_db()
+        from collector.store import ObjectStore
+        with db.conn.cursor() as c:
+            c.execute(
+                f"SELECT article_key FROM articles WHERE source='{source}' "
+                "AND (thumb_object IS NULL OR thumb_object='')")
+            missing = [r['article_key'] for r in c.fetchall()]
+        if not missing:
+            return {'missing': 0, 'ok': 0}
+        _log(f'{source} {len(missing)} 篇缺缩略图(漏网),自动补抓(文章页首图路线)')
+        # backfill_article_firstimg 自己打印进度,无返回值;包一层计数
+        before_ok = 0
+        try:
+            backfill_article_firstimg(db, ObjectStore(), source, missing, browser)
+            with db.conn.cursor() as c:
+                c.execute(
+                    f"SELECT COUNT(*) AS n FROM articles WHERE source='{source}' "
+                    "AND (thumb_object IS NULL OR thumb_object='')")
+                remain = c.fetchone()['n']
+            before_ok = len(missing) - remain
+        except Exception as e:  # noqa: BLE001
+            _log(f'[warn] {source} 缩略图补抓主流程异常:{type(e).__name__}: {e}')
+        return {'missing': len(missing), 'ok': before_ok}
+    except Exception as exc:  # noqa: BLE001 收尾失败不阻断采集主流程
+        _log(f'[warn] {source} 缩略图补抓失败:{type(exc).__name__}: {exc}')
+        return {'missing': 0, 'ok': 0}
+
+
+
 def _has_pending(source):
     """库里是否还有 pending 正文(排队消化续轮判据)。"""
     db = _new_db()
@@ -269,6 +310,10 @@ def _collect_browser_site(source):
             stats['failed'] += more['failed']
             rounds += 1
         stats['img_decrypted'] = _decrypt_new_cipher_images()
+        # 缩略图补漏网:collect_thumbs 只能拿到当前列表页卡,新增/翻出去的文章
+        # 要走文章页首图兜底(复用 thumbs_backfill 的明文路线,浏览器还开着不浪费)
+        # ——Docker 场景必须自动跑,不能留给人发现(用户 2026-09-30 明令)
+        stats['thumbs_backfill'] = _backfill_browser_site_thumbs(source, browser_fetch)
         return {'status': 'ok', 'stats': stats, 'error': ''}
     finally:
         try:
