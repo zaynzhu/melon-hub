@@ -1226,3 +1226,105 @@ input:focus:not(:focus-visible) { outline: none; }
   .card-featured .card-title { font-size: 15.5px; -webkit-line-clamp: 2; }
   .card-featured .card-summary { font-size: 12.8px; -webkit-line-clamp: 2; }
 }
+
+/* ---------- 设置页:站点与镜像面板 ---------- */
+.sites-detail-list { display: flex; flex-direction: column; gap: 14px; }
+.site-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-m);
+  background: var(--bg-input);
+}
+.site-detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-faint);
+  margin-bottom: 4px;
+}
+.site-detail[data-source="hl365"]  .site-detail-name { color: var(--src-hl365); }
+.site-detail[data-source="wacg51"] .site-detail-name { color: var(--src-wacg51); }
+.site-detail[data-source="mrds"]   .site-detail-name { color: var(--src-mrds); }
+.site-detail-name {
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.site-detail-id {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  letter-spacing: 0.3px;
+}
+.site-detail-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.site-detail-label {
+  flex-shrink: 0;
+  width: 80px;
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+  padding-top: 1px;
+}
+.site-detail-home .site-detail-label { color: var(--text-secondary); font-weight: 600; }
+.site-detail-home-url {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--accent-strong);
+  word-break: break-all;
+  background: var(--accent-faint);
+  border: 1px solid var(--accent-ring);
+  border-radius: var(--radius-s);
+  padding: 3px 8px;
+  letter-spacing: 0.1px;
+}
+.site-detail-home-url:hover { background: var(--accent-subtle); }
+.site-detail-mirrors,
+.site-detail-homeway {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+.site-detail-mirror {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  background: var(--bg-chip);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-s);
+  padding: 3px 8px;
+  word-break: break-all;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+.site-detail-mirror:hover {
+  color: var(--text-main);
+  border-color: var(--border-medium);
+}
+.site-detail-mirror.is-home {
+  color: var(--accent-strong);
+  background: var(--accent-faint);
+  border-color: hsla(158, 82%, 52%, 0.28);
+}
+.site-detail-homeway-link {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  word-break: break-all;
+  text-decoration: underline;
+  text-decoration-color: hsla(150, 14%, 100%, 0.18);
+  text-underline-offset: 3px;
+}
+.site-detail-homeway-link:hover { color: var(--accent-strong); text-decoration-color: var(--accent-strong); }
+.site-detail-empty { color: var(--text-faint); }
+
+/* 设置页的 source 配色应用到站名 */
+.site-detail[data-source] .site-detail-name { font-family: var(--font-serif); }

@@ -93,12 +93,23 @@ def _apply_home(site_id, old_home, new_home):
 
 
 def discover_site(site_id, site, apply):
+    """跑一遍镜像发现。返回字典供同步面板透传(原 print 保留,日志可见)。"""
+    result = {
+        'site_id': site_id,
+        'home': site.get('home', ''),
+        'home_ok': None,
+        'home_note': '',
+        'candidates': [],
+        'verified': [],
+        'suggestion': '',  # 建议切换到哪个镜像
+    }
     disc = site.get('discover') or {}
     markers = disc.get('markers') or []
     theme = disc.get('theme_marker', '')
     if not markers:
         print(f'[{site_id}] 未配置 discover.markers,跳过')
-        return
+        result['home_note'] = '未配置指纹'
+        return result
     print(f'[{site_id}] 开始发现(标识词: {markers}, 主题标记: {theme or "无"})')
 
     known_hosts, page_hosts = _known_hosts(site)
@@ -116,6 +127,7 @@ def discover_site(site_id, site, apply):
         print(f'  回家路 {page}: 候选 {len(fresh)} 个 -> {fresh[:6]}')
         candidates.extend(fresh)
     candidates = list(dict.fromkeys(candidates))[:3]
+    result['candidates'] = candidates
 
     verified = []
     for host in candidates:
@@ -125,6 +137,7 @@ def discover_site(site_id, site, apply):
         if ok:
             verified.append(url)
         time.sleep(2)
+    result['verified'] = verified
 
     home = site.get('home', '')
     # CF 偶发摩擦会造成单次误判,连续两次失败才认定失效(--apply 场景的安全阀)
@@ -136,22 +149,27 @@ def discover_site(site_id, site, apply):
         print(f'  [warn] home 自检第 {attempt + 1} 次失败: {home_note}')
         time.sleep(5)
     print(f'  当前 home {home}: {"✓ 健康" if home_ok else "✗ 失效"} {home_note}')
+    result['home_ok'] = home_ok
+    result['home_note'] = home_note
 
     if home_ok:
         if verified:
             print(f'  结论: home 健康,无需变更;备用候选 {[u for u in verified]} 可人工复核进 mirrors')
         else:
             print('  结论: home 健康,回家路未发现新地址')
-        return
+        return result
     if not verified:
         print('  结论: home 失效且无通过验证的候选,需人工介入(查 TG/侦察档案地址簿)')
-        return
+        result['suggestion'] = ''
+        return result
     target = verified[0]
+    result['suggestion'] = target
     if apply:
         _apply_home(site_id, home, target)
         print(f'  结论: --apply 已把 home 换成 {target}(旧地址仍在 mirrors,建议人工复核)')
     else:
         print(f'  结论: home 失效,候选 {target} 可用;加 --apply 写入 sites.yaml')
+    return result
 
 
 def main():

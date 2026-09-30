@@ -83,6 +83,72 @@
     $('settings-status').textContent = lines.join(' · ');
   }
 
+  async function loadSitesDetail() {
+    const wrap = $('sites-detail-list');
+    try {
+      const sites = await api('/api/sites/detail');
+      wrap.innerHTML = '';
+      for (const s of sites) {
+        const box = document.createElement('div');
+        box.className = 'site-detail';
+        box.dataset.source = s.id;
+        box.innerHTML = `
+          <div class="site-detail-head">
+            <span class="site-detail-name"></span>
+            <span class="site-detail-id"></span>
+          </div>
+          <div class="site-detail-row site-detail-home">
+            <span class="site-detail-label">当前 home</span>
+            <a class="site-detail-home-url" target="_blank" rel="noopener noreferrer"></a>
+          </div>
+          <div class="site-detail-row">
+            <span class="site-detail-label">镜像池</span>
+            <div class="site-detail-mirrors"></div>
+          </div>
+          <div class="site-detail-row">
+            <span class="site-detail-label">回家路</span>
+            <div class="site-detail-homeway"></div>
+          </div>`;
+        box.querySelector('.site-detail-name').textContent = s.name;
+        box.querySelector('.site-detail-id').textContent = s.id;
+        const homeA = box.querySelector('.site-detail-home-url');
+        homeA.href = s.home;
+        homeA.textContent = s.home;
+        const mirrorsBox = box.querySelector('.site-detail-mirrors');
+        if (s.mirrors.length === 0) {
+          mirrorsBox.innerHTML = '<span class="site-detail-empty">无备用(主站挂了需人工跑 discover)</span>';
+        } else {
+          for (const m of s.mirrors) {
+            const chip = document.createElement('a');
+            chip.className = 'site-detail-mirror' + (m === s.home ? ' is-home' : '');
+            chip.href = m;
+            chip.target = '_blank';
+            chip.rel = 'noopener noreferrer';
+            chip.textContent = m;
+            mirrorsBox.appendChild(chip);
+          }
+        }
+        const homeBox = box.querySelector('.site-detail-homeway');
+        if (s.homeway_pages.length === 0) {
+          homeBox.innerHTML = '<span class="site-detail-empty">无</span>';
+        } else {
+          for (const h of s.homeway_pages) {
+            const a = document.createElement('a');
+            a.className = 'site-detail-homeway-link';
+            a.href = h;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.textContent = h;
+            homeBox.appendChild(a);
+          }
+        }
+        wrap.appendChild(box);
+      }
+    } catch (e) {
+      wrap.innerHTML = `<div class="settings-hint" style="color:hsl(6,80%,64%)">镜像配置载入失败: ${e.message}</div>`;
+    }
+  }
+
   $('settings-save').addEventListener('click', save);
   // 输入框改动即校验开关:间隔关掉时小时框禁用,每日关掉时时间框禁用
   const intervalBox = $('interval-enabled'), intervalHours = $('interval-hours');
@@ -96,5 +162,6 @@
   syncDisabled();
 
   load();
+  loadSitesDetail();
   setInterval(refreshStatus, 5000);
 })();

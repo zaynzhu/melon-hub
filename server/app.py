@@ -56,6 +56,23 @@ def sources():
             for sid, site in cfg.items()]
 
 
+@app.get('/api/sites/detail')
+def sites_detail():
+    """设置页用:每站 home/mirrors/homeway_pages 全量,只读透传 yaml。"""
+    cfg = load_config()['sites']
+    out = []
+    for sid, site in cfg.items():
+        out.append({
+            'id': sid,
+            'name': site['name'],
+            'home': site['home'],
+            'mirrors': list(site.get('mirrors', [])),
+            'homeway_pages': list(site.get('homeway_pages', [])),
+            'origin': site.get('origin', ''),
+        })
+    return out
+
+
 @app.get('/api/articles')
 def articles(source: str = None, limit: int = Query(50, le=200), offset: int = 0):
     if source and source not in load_config()['sites']:

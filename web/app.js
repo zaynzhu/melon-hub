@@ -146,9 +146,28 @@
         el.textContent = '⏸ 排队中';
         el.className = 'sync-site-status muted';
       } else {
-        el.textContent = '❌ ' + res.error;
+        // 失败,带 discover 建议(主站挂了的话给出切换指引)
+        let errText = '❌ ' + res.error;
+        const disc = res.discover;
+        if (disc && disc.home_ok === false && disc.suggestion) {
+          errText += ` | 主站疑似失效,候选:${disc.suggestion}`;
+        } else if (disc && disc.home_ok === false && !disc.suggestion) {
+          errText += ` | 主站失效且无候选,需人工查回家路`;
+        }
+        el.textContent = errText;
         el.className = 'sync-site-status error';
         anyDone = true;
+        // 详情挂到站点行 title,鼠标悬停可看完整候选清单
+        if (disc) {
+          const candidates = (disc.verified || []).join('\n');
+          const allCand = (disc.candidates || []).join('\n');
+          row.title = [
+            `home 自检: ${disc.home_note || '未知'}`,
+            candidates ? `已验证可用候选:\n${candidates}` : '',
+            allCand ? `回家路挖到的候选(未全验证):\n${allCand}` : '',
+            `人工落地: .venv/bin/python collector/discover.py --apply`
+          ].filter(Boolean).join('\n\n');
+        }
       }
     }
     const note = $('sync-note');

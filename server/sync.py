@@ -147,9 +147,47 @@ def _collect_source(source, pages=1):
         result['gaps'] = _audit_gaps(source)
         if any(result['gaps'].values()):
             _log(f"[gap] {source} 仍有缺口:{result['gaps']}")
+        # 采集失败:跑一次镜像发现,把 home 自检结论+候选写到结果里——
+        # 只报告不改 yaml,人工跑 scripts/discover.py --apply 才落地(项目红线)
+        if result['status'] == 'error':
+            result['discover'] = _discover_advice(source)
         return result
     except Exception as exc:  # noqa: BLE001 单站失败不中断整批
-        return {'status': 'error', 'stats': None, 'error': str(exc)}
+        r = {'status': 'error', 'stats': None, 'error': str(exc)}
+        r['discover'] = _discover_advice(source)
+        return r
+
+
+def _discover_advice(source):
+    """主站疑似挂了时跑镜像自动发现,返回 home 健康度/候选/切换建议。
+
+    永远不修改 sites.yaml;只在采集失败时给面板一个可执行的下步提示。
+    浏览器 daemon 不可达(hl365 也走 curl,不经过 webbridge 的场景)时,hl365 走
+    服务端 curl 即可,wacg51/mrds 的回家路页挂 CF 需真实浏览器,daemon 不通则跳过。
+    任何异常都吞掉返回 None(发现失败不应挡住采集本身的错误回报)。
+    """
+    try:
+        # 浏览器站需要 daemon,daemon 不通则跳过 discover(避免触发 daemon 自启风暴)
+        if source in ('wacg51', 'mrds') and not _browser_daemon_reachable():
+            _log(f'[warn] {source} 采集失败但 webbridge 不在,跳过镜像发现')
+            return None
+        if source in ('wacg51', 'mrds'):
+            from collector import browser_fetch
+            try:
+                browser_fetch.ensure_ready()
+            except Exception as e:  # noqa: BLE001
+                _log(f'[warn] {source} 浏览器就绪失败,跳过 discover: {e}')
+                return None
+        from collector.config import load_config
+        from collector import discover as _disc_module
+        site = load_config()['sites'].get(source)
+        if not site:
+            return None
+        _log(f'{source} 采集失败,跑镜像发现找备用(home 自检 + 回家路)')
+        return _disc_module.discover_site(source, site, apply=False)
+    except Exception as exc:  # noqa: BLE001
+        _log(f'[warn] {source} discover 失败:{type(exc).__name__}: {exc}')
+        return None
 
 
 def _audit_gaps(source):

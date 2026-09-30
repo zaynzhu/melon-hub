@@ -66,6 +66,17 @@
       <div class="settings-card-title">运行状态</div>
       <div class="settings-status" id="settings-status">载入中…</div>
     </div>
+
+    <div class="settings-card">
+      <div class="settings-card-title">站点与镜像</div>
+      <div class="settings-hint">
+        每站当前采集入口 <strong>home</strong> 高亮;镜像池是 home 失效时的备用切换候选;回家路是官方发布新地址的页面。
+        主站连续失败时同步面板会提示候选,需人工命令行跑 <code>scripts/discover.py --apply</code> 落地。
+      </div>
+      <div class="sites-detail-list" id="sites-detail-list">
+        <div class="settings-hint">载入中…</div>
+      </div>
+    </div>
   </main>
 
   <script src="/settings.js"></script>
