@@ -231,6 +231,18 @@ def _backfill_hl365_thumbs():
         return {'missing': 0, 'ok': 0, 'no_src': [], 'failed': []}
 
 
+def _has_pending(source):
+    """库里是否还有 pending 正文(排队消化续轮判据)。"""
+    db = _new_db()
+    try:
+        with db.conn.cursor() as c:
+            c.execute(f"SELECT COUNT(*) AS n FROM articles "
+                      f"WHERE source='{source}' AND status='pending'")
+            return c.fetchone()['n'] > 0
+    finally:
+        db.close()
+
+
 def _collect_browser_site(source):
     from collector import browser_fetch, typecho_collector
     if not _browser_daemon_reachable():
@@ -246,6 +258,16 @@ def _collect_browser_site(source):
         except Exception as exc:  # noqa: BLE001 缩略图失败不挡正文
             _log(f'[warn] {source} 缩略图采集失败:{type(exc).__name__}: {exc}')
         stats.update(typecho_collector.collect_articles(source, limit=12))
+        # 排队消化:一轮限 12 篇,剩的自动续轮直到清零,上限防失控;
+        # 连续失败≥2 说明浏览器路线当天不稳,停止续轮留待下次——
+        # 用户明确不要"每次弄一半就结束"
+        rounds = 1
+        while rounds < 6 and stats['failed'] < 2 and _has_pending(source):
+            _log(f'{source} 仍有排队正文,自动续抓第 {rounds + 1} 轮')
+            more = typecho_collector.collect_articles(source, limit=12)
+            stats['done'] += more['done']
+            stats['failed'] += more['failed']
+            rounds += 1
         stats['img_decrypted'] = _decrypt_new_cipher_images()
         return {'status': 'ok', 'stats': stats, 'error': ''}
     finally:
