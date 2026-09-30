@@ -379,6 +379,10 @@ input:focus:not(:focus-visible) { outline: none; }
   font-variant-numeric: tabular-nums;
   /* 数字用超大号,带来"刊头"冲击 */
 }
+.date-num-unknown {
+  color: var(--text-muted);
+  font-weight: 500;
+}
 .date-meta {
   display: flex;
   flex-direction: column;
@@ -1218,7 +1222,7 @@ input:focus:not(:focus-visible) { outline: none; }
     grid-template-columns: 1fr;
   }
   .card-featured .card-cover { min-height: 200px; height: 200px; }
-  .card-featured .card-body { padding: 36px 15px 15px; gap: 9px; }
+  .card-featured .card-body { padding: 28px 15px 15px; gap: 9px; }
   .card-featured .card-title { font-size: 15.5px; -webkit-line-clamp: 2; }
   .card-featured .card-summary { font-size: 12.8px; -webkit-line-clamp: 2; }
 }
