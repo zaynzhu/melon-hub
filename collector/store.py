@@ -234,6 +234,17 @@ class Database:
             rows = self._exec('SELECT * FROM articles').fetchall()
         return [dict(r) for r in rows]
 
+    def count_articles(self, source=None):
+        """全表或指定站点文章总数(供列表接口元信息显示,和分页无关)。"""
+        sql = 'SELECT COUNT(*) AS n FROM articles'
+        args = ()
+        if source:
+            sql += f' WHERE source={self.ph}'
+            args = (source,)
+        with self._lock:
+            row = self._exec(sql, args).fetchone()
+        return dict(row)['n'] if row else 0
+
     def get_setting(self, key, default=None):
         with self._lock:
             row = self._exec(

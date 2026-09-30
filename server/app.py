@@ -65,7 +65,7 @@ def articles(source: str = None, limit: int = Query(50, le=200), offset: int = 0
         r['cover'] = _cover(r)
         r.pop('images_json', None)
         r['source_url'] = _source_url(r)
-    return {'total': len(rows), 'articles': rows}
+    return {'total': db.count_articles(source), 'articles': rows}
 
 
 @app.get('/api/articles/{source}/{article_key}')
