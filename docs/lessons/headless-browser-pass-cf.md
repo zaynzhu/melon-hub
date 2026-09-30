@@ -37,6 +37,27 @@
   - macOS 无 `timeout` 命令(zsh 报 command not found),脚本内自带超时即可;
   - 判据别用 HTTP 状态码:挑战页也是 200/403 混杂,必须查 DOM 特征。
 
+## ✅ 本机 Playwright 资产:先查再装,别重复安装(2026-09-30)
+
+- **环境**:macOS(darwin 25.6.0 arm64)
+- **为何值得记**:做无头实验前用户一句"先别装,我怀疑 Mac 上有"——全查一遍后**零安装完成实验**;下次任何要 Playwright 的实验直接复用,省 ~百 MB 下载与依赖排错。
+- **最终方案**(查资产命令,可直接复制):
+  ```bash
+  # 1) 浏览器缓存(Playwright 装过就会留在这)
+  ls ~/Library/Caches/ms-playwright/          # chromium-*/chromium_headless_shell-*/ffmpeg-*
+  # 2) Python 包(常见于其他项目 venv,本机 vdl/douyin-downloader 各有一份)
+  for d in <项目根>/*/.venv/lib/python*/site-packages; do [ -d "$d/playwright" ] && echo "FOUND: $d/playwright"; done
+  # 3) 用别的 venv 跑实验
+  cd <有 playwright 的项目> && .venv/bin/python <实验脚本>
+  ```
+- **为什么这样做**:Playwright 的浏览器是全局缓存共享(~/Library/Caches/ms-playwright),包是项目级——只要任何 venv 有包、缓存有浏览器,就能跑,无需在当前项目装。
+- **适用条件**:仅 macOS 本机;查不到再走正常安装,别硬绕。
+- **验证证据**:2026-09-30 查得 chromium-1223/1234 + headless_shell 两版本缓存;`vdl`/`douyin-downloader` 的 .venv(Python 3.12)各含 playwright 包;用 vdl venv 完成两站 CF 实验,零安装。
+- **交叉验证**:单 agent 单次;用户先验提醒(用户是资产位置的第一信息源,先问一句能省整轮探索)。
+- **易错点**:
+  - venv 包版本与缓存浏览器版本会错位(包要 1243,缓存是 1234)→ `launch(executable_path=<现有 chrome 路径>)` 指定即可,别为对齐版本重新下载;
+  - `mdfind`/全盘 `find ~/` 查包巨慢(跑了一轮近 2 分钟未完成),用**定点查项目 venv**的 for 循环秒出。
+
 ## 🔶 容器内长期稳定性待验证(2026-09-30)
 
 - **当前推断**(事实与推断分写):过盾本身已验证;但**容器环境**(数据中心/家庭内网 IP、Linux 特征、无 GUI)与 Mac 实验环境不同,CF 对 IP 信誉的加权可能不同——nas 内网出口 IP 与 Mac 相同(同一家庭宽带),此风险低但未实测。
