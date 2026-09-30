@@ -331,11 +331,138 @@ input:focus:not(:focus-visible) { outline: none; }
 .v2-crumbs-sep { color: var(--text-faint); }
 .v2-crumbs-here { color: var(--text-main); font-weight: 600; }
 
-/* ---------- 卡片流 ---------- */
+/* ---------- 卡片流 + 日期分章 ---------- */
 .card-flow {
   display: grid;
   gap: 18px;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+/* 新版:日期分章容器(section 自身是 grid,date-header 用 grid-column 跨满) */
+.sectioned-flow {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+.date-section {
+  display: contents; /* section 自身不渲染盒,让子元素直接进父 grid */
+}
+.date-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding-top: 22px;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border-faint);
+  position: relative;
+}
+.date-section:first-child .date-header { padding-top: 4px; }
+.date-header::after {
+  /* 章节下划线高亮小段 */
+  content: '';
+  position: absolute;
+  left: 0; bottom: -1px;
+  width: 64px;
+  height: 1.5px;
+  background: var(--accent);
+}
+
+.date-num {
+  font-family: var(--font-serif);
+  font-size: 42px;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -1px;
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+  /* 数字用超大号,带来"刊头"冲击 */
+}
+.date-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-bottom: 4px;
+}
+.date-month {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.date-weekday {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+
+/* 时间线视图 */
+.timeline {
+  position: relative;
+  padding-left: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 880px;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 7px; top: 10px; bottom: 10px;
+  width: 1.5px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--border-subtle) 40px,
+    var(--border-subtle) calc(100% - 40px),
+    transparent
+  );
+}
+
+/* 时间线日期锚点:放大为章节小标 */
+.tl-date {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 22px 0 8px;
+  flex-wrap: wrap;
+}
+.timeline > .tl-date:first-child { margin-top: 4px; }
+.tl-date .tl-dot {
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  margin-left: -26px;
+  /* 让 dot 跟下面 .tl-item 的左缘对齐(差值 = padding-left + .timeline::before offset - dot 半径) */
+  transform: translateY(7px);
+  box-shadow: 0 0 0 3px var(--accent-faint), 0 0 0 1.5px var(--accent-ring);
+}
+.tl-date-text { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.tl-date-label {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: 0.3px;
+  color: var(--text-main);
+  line-height: 1.1;
+}
+.tl-date-weekday {
+  font-size: 12px;
+  color: var(--text-secondary);
+  letter-spacing: 0.3px;
+}
+.tl-date-count {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.2px;
+  padding: 2px 8px;
+  border-radius: var(--radius-s);
+  background: var(--bg-chip);
+  border: 1px solid var(--border-faint);
 }
 
 .card {
@@ -513,48 +640,6 @@ input:focus:not(:focus-visible) { outline: none; }
 }
 .load-more:active { transform: scale(0.98); }
 
-/* ---------- 时间线视图 ---------- */
-.timeline {
-  position: relative;
-  padding-left: 26px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-width: 860px;
-}
-.timeline::before {
-  content: '';
-  position: absolute;
-  left: 7px; top: 10px; bottom: 10px;
-  width: 1.5px;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    var(--border-subtle) 40px,
-    var(--border-subtle) calc(100% - 40px),
-    transparent
-  );
-}
-
-.tl-date {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
-  margin: 16px 0 6px;
-}
-.tl-date .tl-dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  background: var(--accent);
-  flex-shrink: 0;
-  margin-left: -26px;
-  box-shadow: 0 0 0 3px var(--accent-faint), 0 0 0 1px var(--accent-ring);
-}
-
 .tl-item {
   display: flex;
   gap: 14px;
@@ -633,6 +718,24 @@ input:focus:not(:focus-visible) { outline: none; }
 .tri-col[data-source="hl365"] .tri-col-header::before  { background: var(--src-hl365); }
 .tri-col[data-source="wacg51"] .tri-col-header::before { background: var(--src-wacg51); }
 .tri-col[data-source="mrds"] .tri-col-header::before   { background: var(--src-mrds); }
+
+.tri-col-name-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.tri-col-today {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+.tri-col-today.has-new {
+  color: var(--accent-strong);
+  font-weight: 650;
+}
 
 .tri-col-name {
   font-size: 13.5px;
@@ -999,7 +1102,11 @@ input:focus:not(:focus-visible) { outline: none; }
   .site-tab { white-space: nowrap; flex-shrink: 0; }
   .topbar-right { order: 3; margin-left: auto; }
   .feed-wrap { padding: 16px 14px 32px; }
-  .card-flow { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .card-flow, .sectioned-flow { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .date-header { gap: 12px; padding-top: 20px; }
+  .date-num { font-size: 32px; }
+  .date-month { font-size: 11.5px; }
+  .date-weekday { font-size: 11px; }
   .card-cover { height: 130px; }
   .card-body { padding: 11px 11px 12px; gap: 7px; }
   .card-title { font-size: 13.5px; -webkit-line-clamp: 2; }
@@ -1026,4 +1133,92 @@ input:focus:not(:focus-visible) { outline: none; }
   .card:hover, .load-more:hover, .refresh-btn:hover,
   .sync-start-btn:hover, .site-tab:hover, .view-btn:hover { transform: none; }
   .card:hover .card-cover { transform: none; }
+}
+
+/* ---------- Step 2:featured hero 与今日/往期视觉分级 ---------- */
+
+/* featured 首卡:第一章节第一张,占满 2 列 */
+.date-section > .card-featured {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 0;
+  align-items: stretch;
+  /* 让 featured 卡的封面/正文水平排列 */
+}
+.card-featured .card-cover {
+  height: 100%;
+  min-height: 320px;
+  width: 100%;
+  object-fit: cover;
+}
+.card-featured .card-body {
+  padding: 24px 26px;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.card-featured .card-title {
+  font-family: var(--font-serif);
+  font-size: 21.5px;
+  font-weight: 780;
+  line-height: 1.35;
+  letter-spacing: 0.2px;
+  -webkit-line-clamp: 3;
+}
+.card-featured .card-summary {
+  font-size: 13.5px;
+  line-height: 1.7;
+  -webkit-line-clamp: 3;
+  color: var(--text-secondary);
+}
+/* featured 卡顶条更粗,作为头版标记 */
+.card-featured::before { height: 3px; opacity: 1; }
+/* featured 顶条右上角加"今日焦点"小标 */
+.card-featured::after {
+  content: '今日焦点';
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: hsl(150, 20%, 8%);
+  background: var(--accent-strong);
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
+  pointer-events: none;
+}
+/* featured 卡正文给右上标签留空 */
+.date-section > .card-featured .card-body { padding-top: 36px; }
+
+/* 今日卡稍微拉高注意力;往期卡片轻微压暗,拉开时序层级 */
+.date-section > .card-today {
+  border-color: hsla(158, 82%, 52%, 0.18);
+}
+.date-section > .card:not(.card-featured):not(.card-today) {
+  /* 往期卡片:对比度略降,不抢今日卡的风头 */
+  filter: saturate(0.92) brightness(0.96);
+}
+.date-section > .card:not(.card-featured):not(.card-today):hover {
+  filter: none;
+}
+.date-section > .card:not(.card-featured):not(.card-today) .card-cover {
+  filter: saturate(0.92) brightness(0.94);
+}
+.date-section > .card:not(.card-featured):not(.card-today):hover .card-cover {
+  filter: none;
+}
+
+/* featured 在窄屏回退为单列 */
+@media (max-width: 720px) {
+  .date-section > .card-featured {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
+  }
+  .card-featured .card-cover { min-height: 200px; height: 200px; }
+  .card-featured .card-body { padding: 36px 15px 15px; gap: 9px; }
+  .card-featured .card-title { font-size: 15.5px; -webkit-line-clamp: 2; }
+  .card-featured .card-summary { font-size: 12.8px; -webkit-line-clamp: 2; }
 }

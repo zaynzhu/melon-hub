@@ -230,6 +230,7 @@
       '<div class="tri-col"><div class="card-skeleton"></div><div class="card-skeleton"></div></div>'
     )).join('');
     meta.textContent = `三栏总览 · 每站最新 ${COLUMN_LIMIT} 条 · 点卡片阅读`;
+    const todayStr = new Date().toISOString().slice(0, 10);
     const lists = await Promise.all(sources.map((s) =>
       api('/api/articles?' + new URLSearchParams({ source: s.id, limit: COLUMN_LIMIT, offset: 0 }))
         .then((d) => d.articles)
@@ -243,13 +244,20 @@
       col.dataset.source = s.id;
       const head = document.createElement('div');
       head.className = 'tri-col-header';
+      const nameWrap = document.createElement('div');
+      nameWrap.className = 'tri-col-name-wrap';
       const name = document.createElement('span');
       name.className = 'tri-col-name';
       name.textContent = s.name;
+      const todayCount = lists[i].filter((a) => (a.published_at || '').slice(0, 10) === todayStr).length;
+      const todayBadge = document.createElement('span');
+      todayBadge.className = 'tri-col-today' + (todayCount > 0 ? ' has-new' : '');
+      todayBadge.textContent = todayCount > 0 ? `今日 +${todayCount}` : '今日无更新';
+      nameWrap.append(name, todayBadge);
       const count = document.createElement('span');
       count.className = 'tri-col-count';
       count.textContent = `${lists[i].length} 条`;
-      head.append(name, count);
+      head.append(nameWrap, count);
       col.appendChild(head);
       for (const a of lists[i]) col.appendChild(renderCard(a));
       flow.appendChild(col);
@@ -257,26 +265,89 @@
   }
 
   function renderCards(articles) {
-    flow.className = 'card-flow';
+    flow.className = 'sectioned-flow';
     flow.innerHTML = '';
-    for (const a of articles) flow.appendChild(renderCard(a));
-    if (!articles.length) flow.innerHTML = '';
+    if (!articles.length) return;
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    let section = null;
+    let lastDate = null;
+    let isFirst = true;
+
+    for (const a of articles) {
+      const date = (a.published_at || '').slice(0, 10);
+      if (date !== lastDate) {
+        lastDate = date;
+        section = document.createElement('section');
+        section.className = 'date-section';
+
+        // 章节头:大日期数字 + 中文小注
+        const header = document.createElement('header');
+        header.className = 'date-header';
+        const [y, m, d] = date.split('-');
+        const bigNum = document.createElement('span');
+        bigNum.className = 'date-num';
+        bigNum.textContent = d;
+        const metaWrap = document.createElement('div');
+        metaWrap.className = 'date-meta';
+        const monthYear = document.createElement('div');
+        monthYear.className = 'date-month';
+        monthYear.textContent = `${y} 年 ${parseInt(m, 10)} 月`;
+        const weekdayEl = document.createElement('div');
+        weekdayEl.className = 'date-weekday';
+        const weekday = ['周日','周一','周二','周三','周四','周五','周六'][new Date(date).getDay()];
+        weekdayEl.textContent = date === todayStr ? `今天 · ${weekday}` : weekday;
+        metaWrap.append(monthYear, weekdayEl);
+        header.append(bigNum, metaWrap);
+        section.appendChild(header);
+        flow.appendChild(section);
+      }
+      const card = renderCard(a);
+      // featured:第一章节第一张卡视觉放大,占满两列
+      if (isFirst && date === todayStr) {
+        card.classList.add('card-featured');
+      } else if (date === todayStr) {
+        card.classList.add('card-today');
+      }
+      section.appendChild(card);
+      isFirst = false;
+    }
   }
 
   function renderTimeline(articles) {
     flow.className = 'timeline';
     flow.innerHTML = '';
     let lastDate = '';
+    let dayCount = 0;
+    let lastMarker = null;
+    const todayStr = new Date().toISOString().slice(0, 10);
     for (const a of articles) {
       const date = (a.published_at || '').slice(0, 10);
       if (date !== lastDate) {
+        // 上一天的计数回填
+        if (lastMarker) lastMarker.querySelector('.tl-date-count').textContent = dayCount + ' 篇';
         lastDate = date;
+        dayCount = 0;
+
         const marker = document.createElement('div');
         marker.className = 'tl-date';
         marker.dataset.source = a.source;
-        marker.innerHTML = `<span class="tl-dot"></span><span>${fmtDate(a.published_at)}</span>`;
+        const [y, m, d] = date.split('-');
+        const weekday = ['周日','周一','周二','周三','周四','周五','周六'][new Date(date).getDay()];
+        const label = date === todayStr ? `今天` : `${parseInt(m, 10)} 月 ${parseInt(d, 10)} 日`;
+        marker.innerHTML = `
+          <span class="tl-dot"></span>
+          <div class="tl-date-text">
+            <span class="tl-date-label">${label}</span>
+            <span class="tl-date-weekday">${date === todayStr ? weekday : ''}</span>
+            <span class="tl-date-count"></span>
+          </div>
+        `;
         flow.appendChild(marker);
+        lastMarker = marker;
       }
+      dayCount += 1;
+
       const item = document.createElement('div');
       item.className = 'tl-item';
       item.dataset.source = a.source;
@@ -299,6 +370,7 @@
       item.addEventListener('click', () => openReader(a));
       flow.appendChild(item);
     }
+    if (lastMarker) lastMarker.querySelector('.tl-date-count').textContent = dayCount + ' 篇';
   }
 
   // ---- 卡片流 ----
