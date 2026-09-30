@@ -1,9 +1,9 @@
-# ZCode 后台任务跑服务:随会话休眠死掉 + 时间戳双轨误判
+# ZCode 后台任务跑服务:随会话休眠死掉 + 时间戳双轨误判 + SQL 方言/静态缓存两坑
 
 ## 结论速览
 
-- **方案**:macOS 开发期起 8787 服务只能当**临时进程**用(ZCode 后台任务),排查"页面挂了/轮询断"先 `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8787/api/sync/status` 探活(000 = 进程死,重启即愈,别查采集器);比对调度计时一律用 `sync.last_interval_run` 里的 **UTC 值**,别拿日志的北京时间肉眼比。
-- **适用条件**:macOS 开发环境 + ZCode 会话内起 uvicorn;生产归宿是 Docker 常驻容器(进程活着机制就活着),本坑在容器内不存在。
+- **方案**:macOS 开发期起 8787 服务只能当**临时进程**用(ZCode 后台任务),排查"页面挂了/轮询断"先 `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8787/api/sync/status` 探活(000 = 进程死,重启即愈,别查采集器);比对调度计时一律用 `sync.last_interval_run` 里的 **UTC 值**,别拿日志的北京时间肉眼比。SQL 遇 MySQL 保留字(`key`/`order`/`group`)一律反引号包裹,SQLite 测试通过不能证明 MySQL 能跑;FastAPI StaticFiles 默认无 Cache-Control,前端改版不生效先查浏览器缓存(修法:响应头加 `no-cache`)。
+- **适用条件**:macOS 开发环境 + ZCode 会话内起 uvicorn;生产归宿是 Docker 常驻容器(进程活着机制就活着),服务生命周期坑在容器内不存在;SQL 方言与缓存坑跨环境通用。
 
 ## ✅ ZCode 后台任务跑的服务随会话休眠死掉(2026-09-30)
 
@@ -49,3 +49,36 @@
 - **验证证据**:2026-09-30 08:58(北京)误判后,进程外复现:`now(UTC)=2026-09-30T01:01:14+00:00`,`差值 = 1:36:47`,`≥ 6h ? False`——tick 不触发正确,调度无 bug。
 - **交叉验证**:单 agent 单次,复现命令即证据。
 - **易错点**:`Z` 后缀就是 UTC,别忽略;日志无时区后缀但实际是 `MELON_TZ`。
+## ✅ MySQL 保留字:SQLite 测试全绿、生产 MySQL 必炸(2026-09-29)
+
+- **环境**:pymysql、MySQL 8、SQLite 3(测试替身)
+- **为何值得记**:`get_setting` 的 SQL `WHERE key=%s` 在 SQLite 测试全过,生产 MySQL 直接 1064 语法错——**用户一句"hl365 咋能没数据"拦下的上线即炸 bug**;任何"用 SQLite 测试、MySQL 生产"的项目都会再撞。
+- **报错原文**:
+  ```
+  pymysql.err.ProgrammingError: (1064, "You have an error in your SQL syntax; ... right syntax to use near 'key='sync.initialized'' at line 1")
+  ```
+- **报错稳定片段**:`ProgrammingError: (1064`、`near 'key=`
+- **最终方案**:MySQL 里保留字列一律反引号——`SELECT value FROM settings WHERE `key`=%s`;**INSERT 语句同样要包**(`INSERT INTO settings (`key`, ...)`)。SQLite 对反引号也兼容,统一包裹两边都能跑。
+- **为什么这样做**:MySQL 8 保留字表含 `key`/`order`/`group`/`rank` 等高频词,SQLite 宽松不报错——**测试替身与生产方言不一致时,"测试通过"对 SQL 层零证明力**。
+- **验证证据**:修复后在生产 MySQL 真实读写验证 `写入后读回: ok / 覆写读回: overwrite`(2026-09-29)。
+- **交叉验证**:单 agent;用户线上拦截促成。佐证:handoff 2026-09-29 增量块。
+- **易错点**:双驱动 store(Database 类 ph 占位符分支)最容易只顾一边;新写 SQL 时对表名列名全包裹最省心。
+
+## ✅ FastAPI StaticFiles 无 Cache-Control:前端改版后用户拿旧页面(2026-09-29)
+
+- **环境**:FastAPI StaticFiles、Chrome
+- **为何值得记**:前端大改版后用户报"图片没了",实际服务端数据全对——**浏览器对无 Cache-Control 的静态资源走启发式强缓存,旧 index.html/JS 一直占着**,旧 JS 配新数据产生各种灵异现象(误报方向全错,排查浪费一整轮)。
+- **最终方案**:
+  ```python
+  class NoCacheFiles(StaticFiles):
+      def file_response(self, *args, **kwargs):
+          resp = super().file_response(*args, **kwargs)
+          resp.headers['Cache-Control'] = 'no-cache'
+          return resp
+  app.mount('/', NoCacheFiles(directory=web_dir, html=True))
+  ```
+- **为什么这样做**:`no-cache` 不是不缓存——仍走 ETag 协商,未变 304 不重传,变了立刻拿新版;默认无头时浏览器启发式缓存(基于 Last-Modified)可能强缓存数天。
+- **适用条件**:任何"FastAPI/后端直挂静态前端 + 前端会改版"的项目。
+- **验证证据**:`curl -sI .../app.js` 出现 `cache-control: no-cache`;带 If-None-Match 请求返回 304;IAB 重新加载后顶栏从旧「刷新」按钮变新版「同步」按钮(2026-09-29)。
+- **交叉验证**:单 agent;handoff 2026-09-29 缓存坑增量块为佐证。
+- **易错点**:改版不生效时**先 curl 服务端确认实际在发什么**(服务端对的就查缓存),别急着怀疑代码;IAB 里旧页面行为怪异先换 headless Chrome 复现再定性(见 [[iab-does-not-render-img]] 同族环境怪癖)。
