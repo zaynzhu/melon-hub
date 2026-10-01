@@ -2,6 +2,12 @@
 __pycache__/
 *.pyc
 .env
-data/
 .DS_Store
 .zcode/
+# 只忽略数据目录下的具体子目录,保留 backup_content 入库(正文备份层)
+data/objects/
+data/rendered/
+data/backup_cipher/
+data/melon.db
+data/logs/
+data/tmp/
