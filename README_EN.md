@@ -103,7 +103,7 @@ The container serves the API and frontend on port 8787; scheduled collection run
 .venv/bin/python -m uvicorn server.app:app --port 8787
 ```
 
-Switch sites or the timeline view from the top bar, click any card for the fullscreen reading drawer, and use "view original" to jump to the source page.
+Switch sites or views from the top bar (card-flow / timeline / three-column overview), click any card for the fullscreen reading drawer, and use "view original" to jump to the source page. The home view groups articles by date (large date number + "today" + count); the day's first card becomes a featured hero; the timeline view shows big date headers; the three-column overview shows "today +N" badges on each column.
 
 ### Sync and scheduled collection
 

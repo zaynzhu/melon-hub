@@ -96,6 +96,14 @@
 
 > **2026-09-30 增量(服务生命周期定位 + 排队续轮 + CF 无头实验, sess_f36fadf7)**:① **服务探活协议**——用户报"51吃瓜卡住/状态查询失败"真因是 ZCode 后台任务随会话休眠被收(08:44 优雅退出);"卡住"实为浏览器站正常耗时。**经验入 lessons**(dev-service 四坑文件):探活先行、时间戳双轨(日志北京 vs settings UTC,跨轨比对必误判)、MySQL 保留字、StaticFiles 缓存。macOS 是开发环境**不装 launchd(用户明令)**,Docker 常驻是生产归宿。② **排队消化续轮**(2d56d95):浏览器站同步收尾查 `_has_pending` 自动续抓至清零(每轮 12 篇/上限 6 轮/失败≥2 停),终检 gaps 加 `pending_content` 字段(5a04154,面板显示"正文排队 N 篇")——一次同步=队列清零,回应用户"不要每次弄一半"。③ **CF 无头实验**(lessons/headless-browser-pass-cf.md):Playwright 无头 Chromium 直接过 51cg/mrds 托管挑战(实测 45/46 卡片零拦截)——**容器内塞浏览器让两站全自动的方案前提已验证**,改造范围已向用户交代(镜像 +400MB/内存 +300-500MB/browser_fetch 后端抽象/CF 升级降级路径),待用户拍板动工。④ 当日三站积压全清(pending/缺缩略图/缺正文全零),thumbs_backfill 兜底补 11 篇。
 
+> **2026-10-01 增量(UI v2 + 镜像面板 + 备份层 + 一次大事故的完整处置, sess_01e5796c)**:
+> ① **UI 视觉 v2 上线**(1e3e99f / dc4b06e / b9fd2d6):暗色 editorial 阅读向——近黑暖底+衬线中文标题+绿宝石单一主色+三站来源色只留内容层;**首页从"一锅卡片流"改成按日期分章的杂志流**(每天一章节,大日期数字+今天/周三+篇数);首屏第一张自动 featured hero;时间线大字锚点;三栏列头加"今日 +N";全站交互(hover/按下/焦点/reduced-motion)成体系;JS 暗契约(id/class/data-)一条未破。
+> ② **设置页新增"站点与镜像"卡片**(1c52c03):`/api/sites/detail` 透传每站 home/mirrors/homeway_pages/origin(只读),前端可视化;**同步失败时 `_collect_source` 自动调 `_discover_advice` 跑一次 discover,把"主站挂了+候选+切换指引"透传到 `/api/sync/status` 显示在面板,不自动改 yaml**(项目红线守住——改采集入口始终人工)。
+> ③ **mrds/wacg51 同步收尾自动补漏网缩略图**(933ebcf):`_collect_browser_site` 末尾加 `_backfill_browser_site_thumbs`,扫该站 `thumb_object` 为空的行,复用 `thumbs_backfill.backfill_article_firstimg` 走文章页首图明文路线;9 月 30 日新发现的 mrds 6 篇缺缩略图当场自动补齐。
+> ④ **2026-09-30 正文批量重清洗事故(完整处置)**:**根因**——`parse_article` 老 `_SEO_HINTS` 含 `'福利'`/`'直播'` 等词,这些是吃瓜站正文正常关键词,词命中时整段(含 `<img>`)被 decompose,8 张图连带销毁;**用户触发发现**——用户报"详情页图都没了";**处置**——`git reset --hard 1c52c03` 代码回滚到上一稳定状态,**RustFS 无版本控制无法回滚数据**,295 篇 content.json 只能**让采集器跑 `_has_pending` 全部重置后重抓**恢复(wacg51 122/122, mrds 190/193,3 篇是滚动新增);**沉淀**:`docs/lessons/data-rewrite-safety.md` 新增 4 条护栏(RustFS 备份层/重清洗先抽样/CSS 剔除含 img 不删/通用广告词黑名单反模式),`docs/lessons/ui-contract-assert.md` 新建(JS 契约核对),`dev-service` 加第 5 坑(webbridge 单 tab 会话不可并发驱动)。
+> ⑤ **正文备份层入库**(a2a53ae):`scripts/backup_content.py` + `data/backup_content/<source>/<article_key>.json` 453 篇首次快照入 git(约 10MB 纯文本);`.gitignore` 从 `data/` 一刀切改列具体子目录,保留 `data/backup_content/` 入库;**任何会覆盖 content.json 的脚本前必须先跑一次备份脚本**,git revert 即回滚。
+> ⑥ 当前 commit HEAD=a2a53ae(共 30 余个 commit 未推送);**Docker 化下次做,镜像方案(含浏览器与否)待用户拍板**;webbridge 当前会话干净。
+
 ## 剩余步骤与验收
 
 1. **初始化**：`git init`、目录骨架、`config/sites.yaml`（每站：源头、镜像列表、回家路页 URL、解析器名、UA）→ 完成标准：配置能描述三站且域名可换。
