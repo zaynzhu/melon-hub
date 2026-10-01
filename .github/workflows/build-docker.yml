@@ -99,7 +99,9 @@ jobs:
           set -e
           version="${{ steps.validate.outputs.version }}"
           if [ -z "$version" ]; then version="$(git rev-parse --short HEAD)"; fi
-          archive="melon-hub-${version}-${{ steps.tag.outputs.platform }}"
+          platform="${{ steps.tag.outputs.platform }}"
+          platform_safe="${platform//\//-}"
+          archive="melon-hub-${version}-${platform_safe}"
           mkdir -p "${archive}/data"
           gzip -c melon-hub.tar > "${archive}/images.tar.gz"
           cp deploy/compose.yaml "${archive}/compose.yaml"
@@ -109,7 +111,7 @@ jobs:
           {
             "app": "${APP_NAME}",
             "version": "${version}",
-            "platform": "${{ steps.tag.outputs.platform }}",
+            "platform": "${platform}",
             "image": "${{ steps.tag.outputs.image_tag }}",
             "source_commit": "$(git rev-parse HEAD)",
             "build_run": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
