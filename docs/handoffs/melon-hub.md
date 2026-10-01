@@ -102,7 +102,7 @@
 > ③ **mrds/wacg51 同步收尾自动补漏网缩略图**(933ebcf):`_collect_browser_site` 末尾加 `_backfill_browser_site_thumbs`,扫该站 `thumb_object` 为空的行,复用 `thumbs_backfill.backfill_article_firstimg` 走文章页首图明文路线;9 月 30 日新发现的 mrds 6 篇缺缩略图当场自动补齐。
 > ④ **2026-09-30 正文批量重清洗事故(完整处置)**:**根因**——`parse_article` 老 `_SEO_HINTS` 含 `'福利'`/`'直播'` 等词,这些是吃瓜站正文正常关键词,词命中时整段(含 `<img>`)被 decompose,8 张图连带销毁;**用户触发发现**——用户报"详情页图都没了";**处置**——`git reset --hard 1c52c03` 代码回滚到上一稳定状态,**RustFS 无版本控制无法回滚数据**,295 篇 content.json 只能**让采集器跑 `_has_pending` 全部重置后重抓**恢复(wacg51 122/122, mrds 190/193,3 篇是滚动新增);**沉淀**:`docs/lessons/data-rewrite-safety.md` 新增 4 条护栏(RustFS 备份层/重清洗先抽样/CSS 剔除含 img 不删/通用广告词黑名单反模式),`docs/lessons/ui-contract-assert.md` 新建(JS 契约核对),`dev-service` 加第 5 坑(webbridge 单 tab 会话不可并发驱动)。
 > ⑤ **正文备份层入库**(a2a53ae):`scripts/backup_content.py` + `data/backup_content/<source>/<article_key>.json` 453 篇首次快照入 git(约 10MB 纯文本);`.gitignore` 从 `data/` 一刀切改列具体子目录,保留 `data/backup_content/` 入库;**任何会覆盖 content.json 的脚本前必须先跑一次备份脚本**,git revert 即回滚。
-> ⑥ 当前 commit HEAD=a2a53ae(共 30 余个 commit 未推送);**Docker 化下次做,镜像方案(含浏览器与否)待用户拍板**;webbridge 当前会话干净。
+> ⑥ 当前 commit HEAD=7a10a03(**已推送 GitHub**,zaynzhu/melon-hub,32 个 commit 全部入站);**Docker 化下次做,镜像方案(含浏览器与否)待用户拍板**;webbridge 当前会话干净。
 
 ## 剩余步骤与验收
 
