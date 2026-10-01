@@ -82,3 +82,17 @@
 - **验证证据**:`curl -sI .../app.js` 出现 `cache-control: no-cache`;带 If-None-Match 请求返回 304;IAB 重新加载后顶栏从旧「刷新」按钮变新版「同步」按钮(2026-09-29)。
 - **交叉验证**:单 agent;handoff 2026-09-29 缓存坑增量块为佐证。
 - **易错点**:改版不生效时**先 curl 服务端确认实际在发什么**(服务端对的就查缓存),别急着怀疑代码;IAB 里旧页面行为怪异先换 headless Chrome 复现再定性(见 [[iab-does-not-render-img]] 同族环境怪癖)。
+
+## ⛔ webbridge 单 tab 会话不可被并发驱动(2026-10-01 实测)
+
+- **背景**:做镜像发现方案验证时,我从 CLI 直接 `discover_site()` 跑了一次(用伪 home),它通过 webbridge "melon-hub-collect" 会话打开了 mrds66.com 页面;同时 uvicorn 里的同步调度也在用**同一会话**。后续同步请求报 `Cannot attach to this target.`,面板状态乱。
+- **报错原文**:
+  ```json
+  {"ok":false,"error":{"code":"extension_error","message":"Cannot attach to this target."}}
+  ```
+- **报错稳定片段**:`Cannot attach to this target.`
+- **错误原因**:kimi-webbridge 的"session"绑定到一个具体 Chrome tab,**任何一路(CLI 脚本 / uvicorn 同步 / 用户手动)** 在同一时刻抢占都会让另一路拿到悬挂的 tab 指针。这不是 bug,是设计——会话级单 tab。
+- **为何不可再采用**:在 macOS 开发机上跑同步的同时,**别用 CLI 起第二个 webbridge 会话**(如:`python collector/discover.py`、`scripts/thumbs_backfill.py`),也别自己手动驱动同一 session;要么分开时间,要么用不同 session name(如 `melon-hub-collect` vs `melon-hub-debug`)。
+- **替代方案**:做"方案验证/调试"时,先 `pkill -f uvicorn` 停服务(同步自动中断且幂等),CLI 跑完再启;或者改用 kimi-webbridge skill 的 session=参数(独立于 melon-hub-collect,但要小心污染主会话)。
+- **判定时效**:2026-10-01 实测,基于 kimi-webbridge 当前扩展实现;它升级后可能支持多 tab 会话,届时可重验。
+
