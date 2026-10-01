@@ -5,7 +5,8 @@
 - 每日模式:每天 HH:MM(时区 MELON_TZ,默认 Asia/Shanghai)→ 采 hl365 3 页
 - 计时键在发起采集时写入(尝试语义):采集失败也计数,等下个周期再试,不重试轰炸
 - 手动同步与定时采集共用一把锁:手动冲突返回 409,定时冲突跳过本 tick
-- 定时只调度 hl365;wacg51/mrds 依赖宿主机 kimi-webbridge,仅手动可点
+- 定时只调度 hl365;wacg51/mrds 默认走宿主机 kimi-webbridge,仅手动可点;
+  配置 MELON_BROWSER_BACKEND=playwright 后容器内无头 Chromium,采集完关闭不常驻
 """
 import json
 import os
@@ -167,12 +168,14 @@ def _discover_advice(source):
     任何异常都吞掉返回 None(发现失败不应挡住采集本身的错误回报)。
     """
     try:
-        # 浏览器站需要 daemon,daemon 不通则跳过 discover(避免触发 daemon 自启风暴)
-        if source in ('wacg51', 'mrds') and not _browser_daemon_reachable():
+        # 浏览器站需要浏览器后端:webbridge 需要宿主机 daemon,不通跳过 discover(避免自启风暴);
+        # playwright 在容器内自跑无头 Chromium,无 daemon 依赖,直接跑 discover
+        from collector import browser_fetch
+        if source in ('wacg51', 'mrds') and browser_fetch.backend_name() == 'webbridge' \
+                and not _browser_daemon_reachable():
             _log(f'[warn] {source} 采集失败但 webbridge 不在,跳过镜像发现')
             return None
         if source in ('wacg51', 'mrds'):
-            from collector import browser_fetch
             try:
                 browser_fetch.ensure_ready()
             except Exception as e:  # noqa: BLE001
@@ -324,7 +327,7 @@ def _has_pending(source):
 
 def _collect_browser_site(source):
     from collector import browser_fetch, typecho_collector
-    if not _browser_daemon_reachable():
+    if browser_fetch.backend_name() == 'webbridge' and not _browser_daemon_reachable():
         return {'status': 'error', 'stats': None,
                 'error': '需本机浏览器环境(kimi-webbridge daemon 未运行),请在宿主机运行采集器'}
     try:

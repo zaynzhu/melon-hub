@@ -1,0 +1,173 @@
+name: build-melon-hub-amd64
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '镜像版本标识(字母数字 . - _),不填用短 commit SHA'
+        required: false
+        type: string
+      platform:
+        description: '目标平台'
+        required: false
+        default: 'linux/amd64'
+        type: choice
+        options:
+          - linux/amd64
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-melon-hub-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  APP_NAME: melon-hub
+  APP_IMAGE_DEFAULT: melon-hub
+  BUILD_CONTEXT: .
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+      archive_name: ${{ steps.package.outputs.archive_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate inputs
+        id: validate
+        run: |
+          version="${{ github.event.inputs.version }}"
+          platform="${{ github.event.inputs.platform || 'linux/amd64' }}"
+          if [ -n "$version" ] && ! echo "$version" | grep -qE '^[A-Za-z0-9._-]+$'; then
+            echo "version 含非法字符" >&2; exit 1
+          fi
+          case "$platform" in
+            linux/amd64) ;;
+            *) echo "不支持的平台: $platform" >&2; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "platform=$platform" >> "$GITHUB_OUTPUT"
+
+      - name: Derive image tag
+        id: tag
+        run: |
+          version="${{ steps.validate.outputs.version }}"
+          if [ -n "$version" ]; then
+            tag="${APP_IMAGE_DEFAULT}:${version}"
+          else
+            tag="${APP_IMAGE_DEFAULT}:$(git rev-parse --short HEAD)"
+          fi
+          echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "platform=${{ steps.validate.outputs.platform }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU(amd64 构建必需)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        run: |
+          docker buildx build \
+            --platform "${{ steps.tag.outputs.platform }}" \
+            --tag "${{ steps.tag.outputs.image_tag }}" \
+            --load \
+            "${BUILD_CONTEXT}"
+
+      - name: Inspect image
+        run: |
+          docker image inspect "${{ steps.tag.outputs.image_tag }}" \
+            --format '{{.Os}}/{{.Architecture}} tag={{.RepoTags}} id={{.Id}}'
+
+      - name: Static smoke on runner
+        run: |
+          docker run --rm --entrypoint python "${{ steps.tag.outputs.image_tag }}" --version
+
+      - name: Save image tar
+        run: |
+          docker save --output melon-hub.tar "${{ steps.tag.outputs.image_tag }}"
+          ls -lh melon-hub.tar
+
+      - name: Package offline bundle
+        id: package
+        run: |
+          set -e
+          version="${{ steps.validate.outputs.version }}"
+          if [ -z "$version" ]; then version="$(git rev-parse --short HEAD)"; fi
+          archive="melon-hub-${version}-${{ steps.tag.outputs.platform }}"
+          mkdir -p "${archive}/data"
+          gzip -c melon-hub.tar > "${archive}/images.tar.gz"
+          cp deploy/compose.yaml "${archive}/compose.yaml"
+          cp deploy/compose.env.example "${archive}/compose.env.example"
+          cp deploy/README.md "${archive}/README.md"
+          cat > "${archive}/manifest.json" <<EOF
+          {
+            "app": "${APP_NAME}",
+            "version": "${version}",
+            "platform": "${{ steps.tag.outputs.platform }}",
+            "image": "${{ steps.tag.outputs.image_tag }}",
+            "source_commit": "$(git rev-parse HEAD)",
+            "build_run": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          (cd "${archive}" && shasum -a 256 images.tar.gz compose.yaml compose.env.example README.md manifest.json > SHA256SUMS)
+          tar -czf "${archive}.tar.gz" "${archive}"
+          echo "archive_name=${archive}" >> "$GITHUB_OUTPUT"
+          ls -lh "${archive}.tar.gz"
+
+      - name: Upload offline bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.archive_name }}
+          path: ${{ steps.package.outputs.archive_name }}.tar.gz
+          retention-days: 30
+
+  verify:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download offline bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.archive_name }}
+
+      - name: Extract bundle
+        run: |
+          tar -xzf "${{ needs.build.outputs.archive_name }}.tar.gz"
+          cd "${{ needs.build.outputs.archive_name }}"
+          shasum -a 256 -c SHA256SUMS
+
+      - name: Load image without network
+        run: |
+          cd "${{ needs.build.outputs.archive_name }}"
+          gunzip -c images.tar.gz | docker load
+          docker image inspect "${{ needs.build.outputs.image_tag }}" \
+            --format '{{.Os}}/{{.Architecture}} id={{.Id}}'
+
+      - name: Compose config check
+        run: |
+          cd "${{ needs.build.outputs.archive_name }}"
+          cp compose.env.example compose.env
+          sed -i "s|^APP_IMAGE=.*|APP_IMAGE=${{ needs.build.outputs.image_tag }}|" compose.env
+          docker compose --env-file compose.env -f compose.yaml config --quiet
+
+      - name: Start app (isolated)
+        run: |
+          cd "${{ needs.build.outputs.archive_name }}"
+          docker compose --env-file compose.env -f compose.yaml -p melon-hub-verify up -d --pull never --no-build
+          timeout 60 bash -c 'until curl -sf http://127.0.0.1:8787/api/sources >/dev/null 2>&1; do sleep 2; done'
+          curl -sf http://127.0.0.1:8787/api/sources
+          curl -sf http://127.0.0.1:8787/api/sync/status
+          docker compose -p melon-hub-verify ps
+
+      - name: Cleanup verify resources
+        if: always()
+        run: |
+          docker compose -p melon-hub-verify down -v --remove-orphans || true

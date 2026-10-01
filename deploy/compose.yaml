@@ -1,0 +1,20 @@
+services:
+  app:
+    image: ${APP_IMAGE:-melon-hub:latest}
+    container_name: melon-hub
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:8787:8787"
+    volumes:
+      - ./data:/data
+    env_file:
+      - ./compose.env
+    # 无头 Chromium 需要大 /dev/shm;极空间 Z4S 16GB 内存,先保守留 2GB,后续按实际调整
+    shm_size: '1gb'
+    mem_limit: '2g'
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8787/api/sources"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
