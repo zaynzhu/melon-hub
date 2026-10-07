@@ -10,6 +10,7 @@ services:
       - "0.0.0.0:50026:8787"
     volumes:
       - ./data:/data
+      - ./keys:/run/melon:ro   # 密钥文件目录(image.js 放这里),只读挂载
     environment:
       # ---------- 容器固定 ----------
       MELON_DATA_DIR: /data
@@ -32,7 +33,7 @@ services:
       #MELON_S3_PUBLIC_BASE: http://192.168.1.10:59100/melon-hub
       # ---------- 图片解密 JS(可选) ----------
       # 三站 CDN 密文图需要站内 JS 密钥;不配置则密文保留但面板会警告
-      # 先 docker cp image.js melon-hub:/run/melon/image.js,再启用下行
+      # 把密钥内容粘到宿主机 ./keys/image.js,然后取消下面这行注释:
       #MELON_DECRYPT_JS: /run/melon/image.js
     # 无头 Chromium 需要大 /dev/shm;采集时临时 +300-500MB,跑完自动关
     shm_size: '1gb'

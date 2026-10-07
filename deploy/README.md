@@ -30,6 +30,12 @@ gunzip -c images.tar.gz | docker load
 # 默认端口 50026 → 容器 8787;要改外部端口只动左侧数字
 vi compose.yaml
 
+# 4.5) 图片解密密钥(可选,建议配)
+# 三站图片是 CDN 密文,需要站内 JS 才能解;不配则密文保留但面板警告
+mkdir -p keys
+vi keys/image.js    # 把站内 image.*.js 内容粘进去(见 docs/image-decrypt-playbook.md)
+# 然后打开 compose.yaml 取消 environment 里 MELON_DECRYPT_JS 那行的注释
+
 # 5) 建数据目录
 mkdir -p data
 
