@@ -1,15 +1,40 @@
+# melon-hub 容器编排
+# 自包含单文件版——所有配置直接写在 environment 段,不用 env_file
+# 改配置直接改下方 environment;敏感字段(DB 密码/S3 密钥)建议仍走 .env 或 docker secret
 services:
   app:
-    image: ${APP_IMAGE:-melon-hub:latest}
+    image: melon-hub:598fab5
     container_name: melon-hub
     restart: unless-stopped
     ports:
-      - "0.0.0.0:8787:8787"
+      - "0.0.0.0:50026:8787"
     volumes:
       - ./data:/data
-    env_file:
-      - ./compose.env
-    # 无头 Chromium 需要大 /dev/shm;极空间 Z4S 16GB 内存,先保守留 2GB,后续按实际调整
+    environment:
+      # ---------- 容器固定 ----------
+      MELON_DATA_DIR: /data
+      TZ: Asia/Shanghai
+      MELON_TZ: Asia/Shanghai
+      # ---------- 浏览器后端 ----------
+      # playwright = 容器内无头 Chromium(生产 NAS 用)
+      # webbridge  = 借宿主机 kimi-webbridge(仅本机开发)
+      MELON_BROWSER_BACKEND: playwright
+      # ---------- 数据库(可选) ----------
+      # 留空/注释 → 回退容器卷内 SQLite(/data/melon.db)
+      # 生产推荐 MySQL;不要带密码 commit 到公共仓库
+      #MELON_DB_URL: mysql://user:password@192.168.1.10:3306/melon_hub
+      # ---------- S3 / RustFS(可选) ----------
+      # 留空/注释 → 图片与正文 JSON 写容器卷 /data/objects/
+      #MELON_S3_ENDPOINT: http://192.168.1.10:59100
+      #MELON_S3_BUCKET: melon-hub
+      #MELON_S3_ACCESS_KEY: changeme
+      #MELON_S3_SECRET_KEY: changeme
+      #MELON_S3_PUBLIC_BASE: http://192.168.1.10:59100/melon-hub
+      # ---------- 图片解密 JS(可选) ----------
+      # 三站 CDN 密文图需要站内 JS 密钥;不配置则密文保留但面板会警告
+      # 先 docker cp image.js melon-hub:/run/melon/image.js,再启用下行
+      #MELON_DECRYPT_JS: /run/melon/image.js
+    # 无头 Chromium 需要大 /dev/shm;采集时临时 +300-500MB,跑完自动关
     shm_size: '1gb'
     mem_limit: '2g'
     healthcheck:

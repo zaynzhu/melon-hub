@@ -3,12 +3,12 @@
 ## 部署形态
 
 - 单容器 FastAPI + 无头 Chromium,应用内定时调度,无外部 DB/对象存储依赖也能跑(回退容器卷)
-- 生产建议接 MySQL + RustFS(已支持,环境变量切换)
+- 生产建议接 MySQL + RustFS(可改 compose.yaml 的 environment 段接入)
 
 ## 镜像与资源
 
 - 基础:`python:3.12-slim` + Chromium 无头浏览器(Playwright)
-- 镜像体积:约 900MB(base ~120MB + Python 依赖 + chromium ~400MB + 系统依赖)
+- 镜像体积:约 900MB
 - 运行内存:应用常态 ~150MB;采 wacg51/mrds 时无头 Chromium 临时 +300-500MB,采集完自动关闭不常驻
 - compose 限制:`shm_size: 1gb` + `mem_limit: 2g`,Z4S 16GB 够用;CF 被拦时报错不进死循环,等下轮
 
@@ -16,8 +16,8 @@
 
 ```bash
 # 1) 解压部署包
-tar -xzf melon-hub-<version>-<platform>.tar.gz
-cd melon-hub-<version>-<platform>
+tar -xzf melon-hub-598fab5-linux-amd64.tar.gz
+cd melon-hub-598fab5-linux-amd64
 
 # 2) 校验完整性
 shasum -a 256 -c SHA256SUMS
@@ -25,31 +25,31 @@ shasum -a 256 -c SHA256SUMS
 # 3) 导入镜像(镜像已包含,无需联网)
 gunzip -c images.tar.gz | docker load
 
-# 4) 准备配置
-cp compose.env.example compose.env
-chmod 600 compose.env
-vi compose.env  # 至少按需要改 APP_IMAGE 与实际 tag 对齐;DB/S3 按需填
+# 4) 改配置(如需要)
+# compose.yaml 是自包含单文件,所有配置在 environment 段按需改;
+# 默认端口 50026 → 容器 8787;要改外部端口只动左侧数字
+vi compose.yaml
 
 # 5) 建数据目录
 mkdir -p data
 
 # 6) 启动
-docker compose --env-file compose.env -f compose.yaml up -d --pull never --no-build
+docker compose -f compose.yaml up -d --pull never --no-build
 
-# 7) 验证
-curl -sf http://127.0.0.1:8787/api/sources
-curl -sf http://127.0.0.1:8787/api/sync/status
+# 7) 验证(注意:外部端口是 50026,容器内仍是 8787)
+curl -sf http://127.0.0.1:50026/api/sources
+curl -sf http://127.0.0.1:50026/api/sync/status
 ```
 
 ## 升级 / 回滚
 
-- 升级:下载新包 → `docker compose down` → `docker load` 新镜像 → 修改 compose.env 的 `APP_IMAGE` → `up -d --pull never --no-build`
+- 升级:下载新包 → `docker compose down` → `docker load` 新镜像 → 修改 compose.yaml 的 `image:` tag → `up -d`
 - 回滚:改回旧 tag 再 `up -d`;**数据卷不丢**(DB/SQLite 与对象文件全在 ./data)
 
 ## 首次启动行为
 
 - 应用启动后**不会自动跑采集**——settings 表无 `sync.initialized` 时只写默认调度配置(间隔 6h/每日 03:00),定时到点才跑
-- 三站首次内容需要在 Web UI「同步」面板手动触发一次,或等下个周期自动跑
+- 三站首次内容需要在 Web UI「同步」面板手动触发一次(浏览器打开 `http://<NAS-IP>:50026/`),或等下个周期自动跑
 - 想**立刻**采 hl365(RSS 源,无 CF):界面勾 hl365 点「开始同步」即可
 
 ## 浏览器站采集说明

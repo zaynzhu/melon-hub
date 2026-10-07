@@ -104,8 +104,8 @@ jobs:
           archive="melon-hub-${version}-${platform_safe}"
           mkdir -p "${archive}/data"
           gzip -c melon-hub.tar > "${archive}/images.tar.gz"
+          sed -i "s|^    image: .*|    image: ${{ steps.tag.outputs.image_tag }}|" deploy/compose.yaml
           cp deploy/compose.yaml "${archive}/compose.yaml"
-          cp deploy/compose.env.example "${archive}/compose.env.example"
           cp deploy/README.md "${archive}/README.md"
           cat > "${archive}/manifest.json" <<EOF
           {
@@ -118,7 +118,7 @@ jobs:
             "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
           EOF
-          (cd "${archive}" && shasum -a 256 images.tar.gz compose.yaml compose.env.example README.md manifest.json > SHA256SUMS)
+          (cd "${archive}" && shasum -a 256 images.tar.gz compose.yaml README.md manifest.json > SHA256SUMS)
           tar -czf "${archive}.tar.gz" "${archive}"
           echo "archive_name=${archive}" >> "$GITHUB_OUTPUT"
           ls -lh "${archive}.tar.gz"
@@ -156,17 +156,17 @@ jobs:
       - name: Compose config check
         run: |
           cd "${{ needs.build.outputs.archive_name }}"
-          cp compose.env.example compose.env
-          sed -i "s|^APP_IMAGE=.*|APP_IMAGE=${{ needs.build.outputs.image_tag }}|" compose.env
-          docker compose --env-file compose.env -f compose.yaml config --quiet
+          # compose.yaml 自包含(image 已固定为本次 tag),直接静态校验
+          docker compose -f compose.yaml config --quiet
 
       - name: Start app (isolated)
         run: |
           cd "${{ needs.build.outputs.archive_name }}"
-          docker compose --env-file compose.env -f compose.yaml -p melon-hub-verify up -d --pull never --no-build
-          timeout 60 bash -c 'until curl -sf http://127.0.0.1:8787/api/sources >/dev/null 2>&1; do sleep 2; done'
-          curl -sf http://127.0.0.1:8787/api/sources
-          curl -sf http://127.0.0.1:8787/api/sync/status
+          docker compose -f compose.yaml -p melon-hub-verify up -d --pull never --no-build
+          # 容器内端口固定 8787,宿主端口是 50026
+          timeout 60 bash -c 'until curl -sf http://127.0.0.1:50026/api/sources >/dev/null 2>&1; do sleep 2; done'
+          curl -sf http://127.0.0.1:50026/api/sources
+          curl -sf http://127.0.0.1:50026/api/sync/status
           docker compose -p melon-hub-verify ps
 
       - name: Cleanup verify resources
