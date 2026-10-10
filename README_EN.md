@@ -69,7 +69,7 @@ docker build -t melon-hub .
 docker run -d --name melon-hub -p 8787:8787 -v melon-data:/data melon-hub
 ```
 
-The container serves the API and frontend on port 8787; scheduled collection runs inside the app: by default hl365 is collected every 6 hours and daily at 03:00. Open `/settings.html` to change the interval / time or disable either mode; the "Sync" button in the top bar collects on demand. A first collection runs automatically on boot.
+The container serves the API and frontend on port 8787; scheduled collection runs inside the app: by default all three sites are collected in sequence (hl365 → 51chigua → mrds; browser sites require the in-container playwright backend) every 6 hours and daily at 03:00. Open `/settings.html` to change the interval / time or disable either mode; the "Sync" button in the top bar collects on demand. A first collection runs automatically on boot.
 
 > Deployment note: the scheduler runs inside the API process — keep a single instance (one uvicorn worker); multiple instances will duplicate collection.
 
@@ -108,7 +108,7 @@ Switch sites or views from the top bar (card-flow / timeline / three-column over
 ### Sync and scheduled collection
 
 - **Manual sync**: the "Sync" button in the top bar — pick sites and start; the panel shows live per-site progress (hl365 via RSS finishes in seconds; the two browser-based sites take a few minutes each).
-- **Scheduling**: open `/settings.html` — two independent modes, "every N hours" and "daily at HH:MM" (timezone `MELON_TZ`, default Asia/Shanghai); keep one or turn both off. Only hl365 is scheduled (no browser needed); settings persist in the database across restarts.
+- **Scheduling**: open `/settings.html` — two independent modes, "every N hours" and "daily at HH:MM" (timezone `MELON_TZ`, default Asia/Shanghai); keep one or turn both off. On due, all three sites are collected in sequence; under the host webbridge mode only hl365 is scheduled (the user's browser is never touched in the background); settings persist in the database across restarts.
 
 ---
 

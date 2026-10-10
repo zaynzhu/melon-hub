@@ -1,12 +1,13 @@
 """手动同步与进程内定时调度:与 FastAPI 同进程,配置持久化在 settings 表。
 
 语义(改这里要同步改 docs/handoffs/melon-hub.md「同步与调度」):
-- 间隔模式:interval_hours>0 且距上次 ≥N 小时 → 采 hl365 1 页
-- 每日模式:每天 HH:MM(时区 MELON_TZ,默认 Asia/Shanghai)→ 采 hl365 3 页
+- 间隔模式:interval_hours>0 且距上次 ≥N 小时 → 到期
+- 每日模式:每天 HH:MM(时区 MELON_TZ,默认 Asia/Shanghai)→ 到期
+- 到期时顺序采集三站:hl365(每日模式拉 3 页,其余 1 页)→ wacg51 → mrds;
+  浏览器站仅在 MELON_BROWSER_BACKEND=playwright(容器无头 Chromium)时参与定时,
+  webbridge(借宿主机真实 Chrome)只允许手动,后台定时不动用户的浏览器
 - 计时键在发起采集时写入(尝试语义):采集失败也计数,等下个周期再试,不重试轰炸
 - 手动同步与定时采集共用一把锁:手动冲突返回 409,定时冲突跳过本 tick
-- 定时只调度 hl365;wacg51/mrds 默认走宿主机 kimi-webbridge,仅手动可点;
-  配置 MELON_BROWSER_BACKEND=playwright 后容器内无头 Chromium,采集完关闭不常驻
 """
 import json
 import os
@@ -94,6 +95,15 @@ def read_schedule_config(db):
 def valid_sources():
     from collector.config import load_config
     return list(load_config()['sites'].keys())
+
+
+def scheduled_sources():
+    """定时采集的站点清单:hl365 恒采;浏览器站仅 playwright 后端(容器)参与,
+    webbridge 要驱动宿主机真实 Chrome,定时后台不动用户的浏览器。"""
+    from collector import browser_fetch
+    if browser_fetch.backend_name() == 'playwright':
+        return ['hl365', 'wacg51', 'mrds']
+    return ['hl365']
 
 
 # ---- 手动同步 ----
@@ -450,20 +460,26 @@ def _daily_due(db, daily_at, now_local):
 
 
 def _run_scheduled(pages, label):
-    """定时/首启采集(调度线程内联执行):锁忙返回 False,下个 tick 自动补判。"""
+    """定时/首启采集(调度线程内联执行):顺序采集定时站清单;
+    锁忙返回 False,下个 tick 自动补判。"""
+    sources = scheduled_sources()
     if not _run_lock.acquire(blocking=False):
         _log(f'{label}:有采集正在进行,跳过本次调度')
         return False
     try:
         with _state_lock:
             _state.update(
-                running=True, trigger='schedule', current='hl365',
-                sources=['hl365'], results={'hl365': _pending_result()},
+                running=True, trigger='schedule', current='',
+                sources=list(sources),
+                results={s: _pending_result() for s in sources},
                 started_at=_now_iso(), finished_at='')
-        _set_result('hl365', status='running')
-        result = _collect_source('hl365', pages=pages)
-        _set_result('hl365', **result)
-        _log(f'{label} 采集完成:{_result_summary(result)}')
+        for src in sources:
+            _set_state(current=src)
+            _set_result(src, status='running')
+            # 每日模式多页只对 hl365 有意义;浏览器站 collect_list 自己翻列表
+            result = _collect_source(src, pages=pages if src == 'hl365' else 1)
+            _set_result(src, **result)
+            _log(f'{label} 采集 {src}:{_result_summary(result)}')
         return True
     finally:
         _set_state(running=False, current='', finished_at=_now_iso())

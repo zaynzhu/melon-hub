@@ -26,7 +26,7 @@
 - **双存储驱动** -- 配置 MySQL + RustFS 即接入自有基建；不配置自动回退 SQLite + 本地目录，上层接口不变
 - **可靠采集** -- 主机级 2 秒频控、增量幂等重跑、遇登录墙 / 验证码自动停止
 - **优雅降级** -- 失效图片自动占位，列表缩略图独立采集入库
-- **容器化** -- 单 Docker 容器同时跑 API、前端与定时采集（实验性）
+- **容器化** -- 单 Docker 容器同时跑 API、前端与定时采集（已验证，amd64/x86_64 NAS 可部署）
 
 ---
 
@@ -62,16 +62,18 @@ cp .env.example .env   # 可选:配置 MySQL / RustFS,不配置则使用本地�
 
 主要依赖：`fastapi`、`uvicorn`、`requests`、`beautifulsoup4`、`PyYAML`、`boto3`、`PyMySQL`。
 
-### 方式二：Docker（实验性）
+### 方式二：Docker（已验证，amd64/x86_64 NAS 可部署）
 
 ```bash
 docker build -t melon-hub .
 docker run -d --name melon-hub -p 8787:8787 -v melon-data:/data melon-hub
 ```
 
-容器即启动 API 与前端（8787 端口），定时采集由应用内调度器负责：默认「每隔 6 小时 + 每天 03:00」各增量采集一次 hl365，进 `/settings.html` 设置页可改间隔 / 时间或关掉任一模式；顶栏「同步」按钮可随时手动拉取。首次启动会自动采集一次。
+容器即启动 API 与前端（8787 端口），定时采集由应用内调度器负责：默认「每隔 6 小时 + 每天 03:00」到期时顺序采集三站（hl365 → 51吃瓜 → 每日大赛；浏览器站需容器 playwright 后端），进 `/settings.html` 设置页可改间隔 / 时间或关掉任一模式；顶栏「同步」按钮可随时手动拉取。首次启动会自动采集一次。
 
 > 部署提示：定时调度器运行在 API 进程内，务必保持单实例（uvicorn 单 worker）；多实例会重复采集。
+>
+> NAS 部署（极空间 Z4S 等 amd64 环境）：`shm_size: 1gb` + `mem_limit: 2g` 适配无头 Chromium，端口映射示例 `50026:8787`。完整 compose 配置见 `deploy/compose.yaml`（自包含单文件，无 env_file 依赖）。
 
 ---
 
@@ -108,7 +110,7 @@ docker run -d --name melon-hub -p 8787:8787 -v melon-data:/data melon-hub
 ### 同步与定时采集
 
 - **手动同步**：顶栏「同步」按钮，勾选站点后开始，面板实时显示每站进度（hl365 RSS 直连秒级完成；51吃瓜 / 每日大赛走本机浏览器，单站约需数分钟）。
-- **定时采集**：打开 `/settings.html`，两种模式独立开关——「每隔 N 小时」与「每天 HH:MM」（时区 `MELON_TZ`，默认 Asia/Shanghai），可只留一种或全关。定时只采集 hl365（无需浏览器），配置存在数据库，重启不丢。
+- **定时采集**：打开 `/settings.html`，两种模式独立开关——「每隔 N 小时」与「每天 HH:MM」（时区 `MELON_TZ`，默认 Asia/Shanghai），可只留一种或全关。到期时顺序采集三站；宿主机 webbridge 模式下定时只采 hl365（不动用户浏览器），配置存在数据库，重启不丢。
 
 ---
 
@@ -123,7 +125,7 @@ docker run -d --name melon-hub -p 8787:8787 -v melon-data:/data melon-hub
 | ✅ | 正文密文图批量解密入库（2788 张，2026-09-29） |
 | ✅ | 页面手动同步 + 应用内定时采集（2026-09-29） |
 | ⏸️ | 跨站去重视图（实测真重复仅 2-3 组，语料上量后再评估） |
-| 📋 | Docker 镜像构建验证 |
+| ✅ | Docker 镜像构建与 NAS 部署验证（2026-10-08） |
 
 ---
 
