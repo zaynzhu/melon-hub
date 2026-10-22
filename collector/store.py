@@ -145,6 +145,8 @@ class Database:
     def _exec(self, sql, args=()):
         """统一执行:pymysql 走 cursor,sqlite3 直接 execute,均返回可 fetch 的游标。"""
         if self._mysql:
+            # NAS docker 容器间链路会掐断长连接(在线实测 24h 内两次),断了自动重连
+            self.conn.ping(reconnect=True)
             cur = self.conn.cursor()
             cur.execute(sql, args)
             return cur
