@@ -195,10 +195,11 @@ services:
   配套验证脚本：`scripts/verify_db_reconnect.py`（`.venv/bin/python -I scripts/verify_db_reconnect.py`，真实 MySQL：KILL 自身连接 → 断言自动重连后查询成功）。
 - **为什么这样做**：pymysql 长连接被服务端/链路断开后，连接对象不自愈，之后每个查询抛异常直到进程重启。每次执行前置 `ping(reconnect=True)` 在「发现死」的同一回合用原参数重建；autocommit 场景无事务中段断连风险，常态开销仅一个轻量 ping 包（tick 30s + 用户请求量级，可忽略）。所有调用方持 `_lock`，ping 天然线程安全。
 - **适用条件**：极空间 Z4S docker（2026-10-22 实测）；任何容器间通信可能掐长连接的环境。若未来引入显式事务/多语句写，需重新评估重连时机（事务中段断连 ping 救不了——ping 只在执行前恢复连接）。
-- **验证证据**（三段，全部真实执行）：
+- **验证证据**（四段，全部真实执行）：
   1. 生产症状对照：`/api/sources`（纯 yaml，不碰 DB）200，`/api/articles`、`/api/sync/status`、`/api/settings` 500；本机直连 MySQL 正常（articles 899 篇可查，排除服务挂）。
   2. 本地 KILL 实测：验证脚本用旁路连接 `KILL <id>` 掉 Database 的连接，复现 `pymysql.err.OperationalError: (2013, 'Lost connection to MySQL server during query')`；加修复后 KILL 自动重连、查询成功。
   3. 生产 KILL 实测：`SHOW PROCESSLIST` 锁定容器连接（host `172.27.0.1`(docker 网关) + db `melon_hub`，2 条）全部 KILL → 3 秒后 `/api/sync/status` 恢复 200、采集未中断（`running=True`）；其后总库数 905→925（补采 +20 篇入库，写路径实证）。
+  4. 跨项目佐证（2026-10-22，来源：共享该 MySQL 的 whatsnew 项目会话 whatsnew-81 提供）：其日志存在零星 `Server has closed the connection`（Prisma 报 P1017）——同一链路现象的独立客户端观察，佐证掐线是 NAS docker bridge 的**常态低频随机**行为，不只在容器重启等事件时发生。
 - **交叉验证**：单 agent 单会话、多轮收敛（症状对照 → 本地 KILL 复现 → 修复 → 本地 KILL 通过 → 生产 KILL 通过）；无书面审查产物，口头收敛。
 - **诊断时序**（同症状复现时照抄）：① 同进程下分「碰 DB / 不碰 DB」两组接口对照 200/500 → ② 本机（非容器）直连 MySQL 查数据在不在 → ③ `SHOW VARIABLES LIKE 'wait_timeout'` + `SHOW PROCESSLIST` 看服务侧参数与连接方 → ④ KILL 复现/验证修复。
 - **易错点**：
@@ -208,6 +209,9 @@ services:
   - **KILL 验证用 `host=172.27.0.1` + `db=melon_hub` 锁定容器连接**，避免误杀 Mac（局域网 IP 段）/DbGate 的连接；KILL 后**第一个请求即自愈**（ping 在查询之前），不需要等 30s tick。
   - KILL 时若 `running=True`（采集进行中）实测照样能做——采集线程下一步写操作会 ping 重连，反而同时验证了写路径。
   - 浏览器站补采一轮可达 40+ 分钟（每篇 40-50s），排障时别干等它结束，直接 KILL 实测反而更快更全。
+  - **客户端重连语义决定故障烈度**——同一次链路掐线：单条长连接（pymysql 裸用）表现为挂死 500 需重启（本条主场景)；连接池按查询重连（如 Prisma）表现为偶发单条失败后自愈。新建客户端要么选带按查询重连语义的池化客户端，要么裸长连接必须前置 `ping(reconnect=True)`——裸长连接无重连 = 故障放大器。
+
+> 修订 2026-10-22：吸收 whatsnew-81 会话提供的跨项目佐证（共享 MySQL 的 whatsnew/Prisma 日志零星 `Server has closed the connection`/P1017 与本条同源），掐线定性由「事件触发偶发」修正为「常态低频随机」，增补「客户端重连语义决定故障烈度」易错点；验证证据扩为四段。
 
 ## ⛔ 「调大 MySQL 参数/内存就能解决断连」（2026-10-22）
 
