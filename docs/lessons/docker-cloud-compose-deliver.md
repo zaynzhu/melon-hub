@@ -5,6 +5,7 @@
 - 最终方案：Dockerfile 装 `playwright` + `chromium` → GitHub Actions `buildx --platform linux/amd64` → `docker save` 打 tar 包 → NAS `docker load` + `docker compose up`。
 - 适用条件：镜像 ≤2GB、amd64/x86_64、NAS 上能跑 `docker compose`(极空间 Z4S 可以）、构建机与目标机同架构或 QEMU 支持。
 - 运行期保活（2026-10-22 新增）：NAS docker 容器间链路会掐 MySQL 长连接——DB 访问必须断线自愈（`store.py` `_exec` 前置 `ping(reconnect=True)`）；「重启容器才恢复」属于未修复状态。详见下方 ✅ 条目。
+- 运行期 sizing（2026-10-22 新增）：共享 NAS 的 MySQL 128M 出厂 buffer pool 对 1-2GB 数据全 miss、写入窗口 flush 风暴——热集法则定 1G pool + 512M redo（compose command 持久化），四组量化证据双源互验，窗口内延迟 24.5s → 0.79s。详见下方 ✅ 条目。
 
 ## ✅ 云端 Buildx QEMU 跨架构构建（已验证）
 
@@ -212,6 +213,36 @@ services:
   - **客户端重连语义决定故障烈度**——同一次链路掐线：单条长连接（pymysql 裸用）表现为挂死 500 需重启（本条主场景)；连接池按查询重连（如 Prisma）表现为偶发单条失败后自愈。新建客户端要么选带按查询重连语义的池化客户端，要么裸长连接必须前置 `ping(reconnect=True)`——裸长连接无重连 = 故障放大器。
 
 > 修订 2026-10-22：吸收 whatsnew-81 会话提供的跨项目佐证（共享 MySQL 的 whatsnew/Prisma 日志零星 `Server has closed the connection`/P1017 与本条同源），掐线定性由「事件触发偶发」修正为「常态低频随机」，增补「客户端重连语义决定故障烈度」易错点；验证证据扩为四段。
+
+## ✅ 共享 NAS 的 MySQL buffer pool sizing：128M→1G + redo 512M（2026-10-22）
+
+- **为何值得记**：出厂 128M buffer pool 对 1-2GB 数据是"热集全 miss + 写入窗口 flush 风暴"，症状（写入窗口内读 24s）与根因隔了两层，且共享库+整机内存约束让 sizing 决策要过「热集装下 / 余量兜底 / 配套 redo」三道关；本条目四组量化证据由两个会话独立抓取互验（双源），调优结论可复制。
+- **最终方案**（compose `command` 持久化，原文；在线 `SET GLOBAL` 已提前零停机生效）：
+  ```yaml
+      command: >
+        --character-set-server=utf8mb4
+        --collation-server=utf8mb4_unicode_ci
+        --max-connections=200
+        --innodb-buffer-pool-size=1G
+        --innodb-redo-log-capacity=512M
+  ```
+  判据：pool 覆盖热数据集（数据 1-2GB → 1G）；MemAvailable 6.6G 留足余量；redo 256-512M 覆盖 20 分钟/次写入窗口；`innodb_flush_log_at_trx_commit` 共享库**保守保持 1**（提速选项 2 只给"数据可从上游重灌"的单一项目库——有意接受的裁决）。
+- **为什么这样做**：192M 级出厂 pool 放不下百万行级热表，写窗口内读全靠磁盘随机读+checkpoint 挤占；redo 100M 强制频繁 checkpoint → 脏页 flush 旋风。1G pool 让热集常驻，512M redo 让整轮窗口写入集中在一次 checkpoint 周期。
+- **适用条件**：极空间 Z4S（16G 总内存，Docker 多共享）、MySQL 8.4.9、数据量 1-2GB、写入窗口 20 分钟/小时量级。数据量增长后按「热集法则」重算，别照抄数值。
+- **验证证据**（四字段全齐，双源互验）：
+  1. buffer pool 命中率：调前 96.4%（15:33 旧 lifecycle 基线）→ **99.13%**（melon-hub 会话 16:32 抓）/ 99.09%（whatsnew-81 会话 16:31 抓），磁盘读数两侧同值 23,288，read_requests 差仅采样窗口 1 分钟；重启后 57 分钟 Slow_queries=3（旧 lifecycle 累计 750）。
+  2. 窗口外基态延迟：trending 接口调前热状态 2.4s → **0.77s**（调后 16:32 实测）。
+  3. **窗口内延迟**（写入进行中最恶劣场景）：**0.79s**（17:12-17:13 探针，探针时刻确认 iqiyi 批次入库 running）→ 对照调前同场景 24.5s，**31 倍改善**。
+  4. 吞吐同量对照：iqiyi 346 条/批，调参前 15:00 批次 12 分钟 → 调参后 16:00 批次 6 分钟（唯一变量 pool/redo）。
+- **交叉验证**：双 agent 双源实抓互验（melon-hub 会话与 whatsnew-81 会话各自独立抓取，数据咬合；whatsnew-81 侧延迟/吞吐探针为跨会话会话提供，作为佐证材料引用）；无第三方审查产物。
+- **关键步骤**：① `SHOW VARIABLES` 抓现状 + `SHOW GLOBAL STATUS` 抓调前基线（必须赶在计数器随重建清零前）→ ② `grep MemAvailable /proc/meminfo` 拿整机余量定值 → ③ `SET GLOBAL` 在线生效（零停机）→ ④ compose `command` 持久化（容器重建后启动参数接管）→ ⑤ 双源对照验证（命中率+窗口内外延迟+同量吞吐）。
+- **易错点**：
+  - **窗口外延迟不能冒充窗口内**——探针时刻要查库确认批次确实在跑（如 startedAt/running 状态），否则「0.77s 好转」写进条目就是过度声明。
+  - **容器重建清零计数器**——调前基线只能做定性对照，不能与重启后精确比较；抓基线必须赶在重建前。
+  - **先分清故障域**：链路掐线（见上条 ✅）调 MySQL 参数无效；热集 miss 才是 pool 的对症场景——参数调优对症才动。
+  - **容器重建会断所有客户端长连接**——见上条「客户端重连语义决定故障烈度」。
+  - 归因口径：同项目栈里 fetch 网络层的偶发失败（如 tmdb 瞬时抖动）与 DB 无关，别混进 DB 结论做论据。
+- **来源与开放项**：延迟/吞吐/探针数据由 whatsnew-81 会话提供（2026-10-22）。开放项：MySQL 容器 mem_limit 未设（available 6.6G 下风险低；防未来可加 3g 软上限，判据 ≥pool×2 未满足）。
 
 ## ⛔ 「调大 MySQL 参数/内存就能解决断连」（2026-10-22）
 
