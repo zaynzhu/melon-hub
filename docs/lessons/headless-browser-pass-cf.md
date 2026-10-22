@@ -2,7 +2,7 @@
 
 ## 结论速览
 
-- **方案**:Playwright 无头 Chromium(`launch(headless=True)` + 常规 Chrome UA)直接访问 51cg1.com / mrds66.com,CF 托管挑战自动放行(2026-09-30 实测 45/46 张列表卡片,零挑战残留);容器内自动采集可行,无需 stealth 补丁。
+- **方案**:Playwright 无头 Chromium(`launch(headless=True)` + 常规 Chrome UA)直接访问 51cg1.com / mrds66.com,CF 托管挑战自动放行(2026-09-30 实测 45/46 张列表卡片,零挑战残留);**容器化改造已完成并云端验证**(2026-10-01 至 2026-10-08),生产部署可行。
 - **适用条件**:仅 CF 托管挑战(JS 质询)级别站点、低频采集(≥2s 频控,12h 一次);**CF 升级 Turnstile/无头检测后此结论作废,重跑本实验验证**;遇真验证码墙仍按红线即停。
 
 ## ✅ 无头 Playwright 过两站 CF 挑战(2026-09-30)
@@ -58,14 +58,19 @@
   - venv 包版本与缓存浏览器版本会错位(包要 1243,缓存是 1234)→ `launch(executable_path=<现有 chrome 路径>)` 指定即可,别为对齐版本重新下载;
   - `mdfind`/全盘 `find ~/` 查包巨慢(跑了一轮近 2 分钟未完成),用**定点查项目 venv**的 for 循环秒出。
 
-## 🔶 容器内长期稳定性待验证(2026-09-30)
+## ✅ 容器化改造与验证(2026-10-01 至 2026-10-08,原 🔶 立项已落地)
 
-- **当前推断**(事实与推断分写):过盾本身已验证;但**容器环境**(数据中心/家庭内网 IP、Linux 特征、无 GUI)与 Mac 实验环境不同,CF 对 IP 信誉的加权可能不同——nas 内网出口 IP 与 Mac 相同(同一家庭宽带),此风险低但未实测。
-- **已到哪一步**:Mac 无头实验两站通过;容器化改造(镜像 + browser_fetch 后端抽象)未动工。
-- **下一步验证动作**:Docker 镜像内跑同款单页实验(容器起 → 无头访问两站 → 查 .post-card),通过后再接采集链路;连续观察 2-3 天定时采集成功率。
-- **为何值得继续**:用户最终目标"容器自己拉自己排队",这是两站全自动的唯一路径。
+- **原推断**(2026-09-30 立项):过盾本身已验证;但容器环境(数据中心/家庭内网 IP、Linux 特征、无 GUI)与 Mac 实验环境不同,CF 对 IP 信誉的加权可能不同——nas 内网出口 IP 与 Mac 相同(同一家庭宽带),此风险低但未实测。
+- **落地状态**: 容器化改造完成并云端验证——browser_fetch 双后端(`MELON_BROWSER_BACKEND=playwright|webbridge`)、Dockerfile 装 Chromium、NAS 部署跑通。
+- **验证证据**:
+  - 3 次 GitHub Actions 构建成功(run 36852793131/36853271957/37656382930);
+  - NAS `docker load` 539MB tar 包成功;
+  - `docker compose up` 启动、`shm_size: 1gb`、`mem_limit: 2g` 适配;
+  - 部署 compose.yaml 配置内置(`deploy/compose.yaml`)、端口映射 `50026:8787`;
+  - 密钥挂载 `./keys:/run/melon:ro`。
+- **交叉验证**: 多次云端构建 + NAS 部署验证,口头收敛。
 
-## 镜像与部署要点(容器化时用)
+## 镜像与部署要点(已验证用)
 
 - 基础镜像:`python:3.12-slim` + `pip install playwright` + `playwright install --with-deps chromium`(约 +400MB);
 - 部署目标为极空间 Z4S(x86_64,内存有限):Chromium 常驻约 +300-500MB 内存,建议采集完释放(非常驻 browser 进程);
