@@ -79,6 +79,9 @@ def articles(source: str = None, limit: int = Query(50, le=200), offset: int = 0
     if source and source not in load_config()['sites']:
         raise HTTPException(404, f'未知站点:{source}')
     q = (q or '').strip() or None
+    # 与前端 maxlength=100 对齐:防直接打接口时超长 q 把 SQL 条件拼爆
+    if q and len(q) > 100:
+        raise HTTPException(400, '搜索词最长 100 字符')
     rows = db.list_articles(source, limit, offset, q)
     for r in rows:
         r['cover'] = _cover(r)

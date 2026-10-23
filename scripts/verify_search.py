@@ -149,6 +149,18 @@ def main():
               res['total'] == 5 and res['articles'][0]['title'] == FIXTURES[0][2]
               and 'cover' in res['articles'][0], str(res.get('total')))
 
+    # 搜索词长度上限(与前端 maxlength=100 对齐,防 curl 直打超长 q 把 SQL 拼爆)
+    from fastapi import HTTPException
+    try:
+        api_articles(source=None, limit=50, offset=0, q='瓜' * 101)
+        check('API:q=101 字应返回 400', False, '未拦截')
+    except HTTPException as e:
+        check('API:q=101 字应返回 400', e.status_code == 400, f'status={e.status_code}')
+    res = guard(lambda: api_articles(source=None, limit=50, offset=0, q='瓜' * 100),
+                'API:q=100 字(边界)放行')
+    if res is not None:
+        check('API:q=100 字(边界)放行', isinstance(res.get('total'), int), repr(res)[:60])
+
     print()
     if _FAILED:
         print(f'结果:{len(_FAILED)} 项未过')
