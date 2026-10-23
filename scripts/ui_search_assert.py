@@ -221,7 +221,7 @@ async def main(url, width=1440):
             has_input = await ev('!!document.getElementById("search-input")')
             if not check('B1 顶栏存在搜索框 #search-input', has_input, '功能未实现'):
                 print('\nB 段后续断言依赖搜索框,跳过(实现后再跑)')
-                return
+                sys.exit(1)  # 评审发现:此前 return 会跳过退出码逻辑,RED 态 exit 0 骗过 CI
 
             # 先回到干净状态:全部 Tab + 卡片流
             await click('.site-tab[data-source=""]')
@@ -248,8 +248,10 @@ async def main(url, width=1440):
             elapsed = await wait_until(
                 'document.getElementById("feed-meta").textContent.includes("搜索")', timeout=2)
             n = await ev(CARDS) if elapsed is not None else -1
-            check('B4 回车立即搜(不等防抖):1 张"张某某"',
-                  elapsed is not None and elapsed < 0.25 and n == 1, f'elapsed={elapsed} n={n}')
+            # 语义 = "回车单独能搜":上面只改值不发 input,防抖根本没排期;
+            # 阈值给 1s 是区分"有响应/死无响应",赌 300ms 时差在慢机上会 flaky
+            check('B4 回车单独触发搜索(无防抖兜底):1 张"张某某"',
+                  elapsed is not None and elapsed < 1.0 and n == 1, f'elapsed={elapsed} n={n}')
 
             await type_input('', submit='esc')
             await wait_until(f'{CARDS} === 12')
