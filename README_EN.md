@@ -13,13 +13,14 @@
 </div>
 
 > [!TIP]
-> melon-hub is a self-hosted aggregation reading panel: collectors fetch the latest articles from content sites into your own MySQL + RustFS (or local SQLite), a FastAPI backend serves clean reading APIs, and the web frontend offers card-flow / timeline views with a fullscreen reading drawer. All data lands in your own infrastructure — the repository itself contains no scraped content.
+> melon-hub is a self-hosted aggregation reading panel: collectors fetch the latest articles from content sites into your own MySQL + RustFS (or local SQLite), a FastAPI backend serves clean reading APIs, and the web frontend offers card-flow / timeline views, a fullscreen reading drawer, and title search in the top bar. All data lands in your own infrastructure — the repository itself contains no scraped content.
 
 ---
 
 ## ✨ Features
 
 - **Multi-source aggregation** -- Switch between content sites via tabs, with card-flow / timeline / three-column views and per-source color coding
+- **Title search** -- Top-bar fuzzy search over article titles: single characters, phrases, or space-separated terms (AND), scoped to the current tab
 - **Clean reading** -- Ad-free article extraction, fullscreen reading drawer, instant open on cache hit
 - **Manual sync** -- Pick sites and collect from the web UI, with per-site live progress and results
 - **Built-in scheduling** -- Two independent modes (every N hours / daily at HH:MM), configurable in the settings page, no system-level cron needed
@@ -103,7 +104,7 @@ The container serves the API and frontend on port 8787; scheduled collection run
 .venv/bin/python -m uvicorn server.app:app --port 8787
 ```
 
-Switch sites or views from the top bar (card-flow / timeline / three-column overview), click any card for the fullscreen reading drawer, and use "view original" to jump to the source page. The home view groups articles by date (large date number + "today" + count); the day's first card becomes a featured hero; the timeline view shows big date headers; the three-column overview shows "today +N" badges on each column.
+Switch sites or views from the top bar (card-flow / timeline / three-column overview), click any card for the fullscreen reading drawer, and use "view original" to jump to the source page. The top-bar search box fuzzy-matches article titles (auto-search after a short pause, Enter to search now, Esc to clear; it follows the current tab). The home view groups articles by date (large date number + "today" + count); the day's first card becomes a featured hero; the timeline view shows big date headers; the three-column overview shows "today +N" badges on each column.
 
 ### Sync and scheduled collection
 
@@ -121,7 +122,8 @@ Switch sites or views from the top bar (card-flow / timeline / three-column over
 | ✅ | Paginated history backfill and list thumbnail collection |
 | ✅ | Three-column overview and homeway mirror auto-discovery |
 | ✅ | Batch decryption of encrypted article images (2,788 images, 2026-09-29) |
-| ✅ | Web-UI manual sync + in-app scheduled collection (2026-09-29) |
+| ✅ | Web-UI manual sync + in-app scheduled collection (2026-09-29)
+| ✅ | Top-bar title fuzzy search (2026-10-23) |
 | ⏸️ | Cross-site dedup view (only 2-3 real duplicates found; revisit when corpus grows) |
 | 📋 | Docker image build verification |
 
