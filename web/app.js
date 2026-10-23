@@ -1,6 +1,6 @@
 // melon-hub 前端:站点 Tab + 卡片流 + 全屏阅读抽屉
 (() => {
-  const state = { sources: [], current: '', offset: 0, limit: 50, loading: false, view: 'cards', cache: [], q: '' };
+  const state = { sources: [], current: '', offset: 0, limit: 50, loading: false, view: 'cards', cache: [], q: '', reqId: 0 };
 
   const $ = (id) => document.getElementById(id);
   const flow = $('card-flow'), meta = $('feed-meta'), loadMore = $('load-more');
@@ -474,7 +474,10 @@
 
   // ---- 卡片流 ----
   async function loadArticles(reset) {
-    if (state.loading) return;
+    // 分页连点防重入;reset(切站/搜索/清空/同步后刷新)必须插队,否则竞态错位
+    if (state.loading && !reset) return;
+    // 请求代际令牌:本次请求发出后若有更新的请求插队,落地即为过期,直接丢弃
+    const reqId = ++state.reqId;
     state.loading = true;
     loadMore.classList.add('hidden');
     try {
@@ -482,6 +485,7 @@
       if (state.current) q.set('source', state.current);
       if (state.q) q.set('q', state.q);
       const data = await api('/api/articles?' + q);
+      if (reqId !== state.reqId) return; // 已有更新的请求接管这次渲染
       if (reset) {
         state.cache = [];
         flow.innerHTML = '';
@@ -498,9 +502,9 @@
           : '暂无数据 — 点击"刷新"拉取,或先运行采集器';
       }
     } catch (e) {
-      meta.textContent = '载入失败:' + e.message;
+      if (reqId === state.reqId) meta.textContent = '载入失败:' + e.message;
     } finally {
-      state.loading = false;
+      if (reqId === state.reqId) state.loading = false;
     }
   }
 

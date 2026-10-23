@@ -301,6 +301,53 @@ async def main(url, width=1440):
             ok = await wait_until(
                 f'{CARDS} === 12 && document.getElementById("search-input").value === ""')
             check('B11 切 Tab 自动清空搜索框', ok is not None)
+
+            # B12 竞态回归(评审发现):搜索请求在飞时 ESC 清空,
+            # 旧 loadArticles 的 loading 早退会丢弃新请求 → 列表/搜索框/meta 永久错位。
+            # 拦截 fetch 手动挂起(不 resolve),用请求队列证明"ESC 时请求确在飞",再人工放行
+            await ev('window.__origFetch = window.fetch; window.__hold = []; window.__reqs = [];'
+                     'window.fetch = (u, o) => {'
+                     '  if (!String(u).includes("/api/articles")) return window.__origFetch(u, o);'
+                     '  window.__reqs.push(String(u));'
+                     '  return new Promise(res => window.__hold.push(() => window.__origFetch(u, o).then(res)));'
+                     '};'
+                     'window.__release = () => { const h = window.__hold.splice(0); h.forEach(f => f()); };'
+                     '"patched"')
+            await type_input('吃瓜')       # input 事件 → 300ms 防抖
+            ok = await wait_until('window.__reqs.length >= 1 && window.__reqs[0].includes("q=")',
+                                  timeout=3)
+            check('B12 前置:带 q 的请求已进入挂起队列(此后恒在飞)', ok is not None)
+            await type_input('', submit='esc')  # ESC:此时首个请求确定被挂起在飞
+            n2 = await wait_until('window.__reqs.length >= 2', timeout=2)
+            await ev('window.__release(); "released"')
+            await asyncio.sleep(0.5)  # 放行后让 Promise 链渲染落定再读终态
+            n_cards = await ev(CARDS)
+            meta_txt = await ev('document.getElementById("feed-meta").textContent')
+            reqs = await ev('window.__reqs')
+            await ev('window.fetch = window.__origFetch; "restored"')
+            second_no_q = bool(n2 is not None and reqs and len(reqs) >= 2
+                               and 'q=' not in reqs[1].split('?')[-1])
+            check('B12 竞态回归:在飞期间 ESC 的新请求须插队(第二个请求无 q),'
+                  '过期响应被丢弃 → 终态 12 卡且 meta 无"搜索"残留',
+                  second_no_q and n_cards == 12 and '搜索' not in (meta_txt or ''),
+                  f'2nd_req_ok={n2 is not None} final_cards={n_cards} '
+                  f'reqs={reqs} meta={meta_txt!r}')
+
+            # C1 手机断点布局(评审发现,断言已按实测修正):
+            #   tabs 占满整行不放死空、控件自然折行右对齐、搜索独占尾行;
+            #   旧契约"控件与 tabs 同排"依赖 max-width clamp 让位,窄屏下本就不成立
+            if width < 720:
+                rects = await ev('''(() => {
+                  const r = (s) => { const b = document.querySelector(s).getBoundingClientRect();
+                    return { top: b.top, bottom: b.bottom, width: b.width }; };
+                  return { tabs: r('.site-tabs'), right: r('.topbar-right'),
+                           box: r('.search-box') };
+                })()''')
+                tabs_full = rects['tabs']['width'] > 280          # 不再被 clamp 放死空
+                rows_ordered = (rects['tabs']['bottom'] <= rects['right']['top'] + 1
+                                and rects['right']['bottom'] <= rects['box']['top'] + 1)
+                check('C1 手机断点:tabs 满行、控件折行、搜索独占尾行',
+                      tabs_full and rows_ordered, json.dumps(rects, ensure_ascii=False))
     finally:
         proc.terminate()
 
