@@ -12,3 +12,5 @@
 | [docker-cloud-compose-deliver.md](docker-cloud-compose-deliver.md) | Docker 化交付完整闭环:云端 Buildx QEMU 跨架构构建、离线 tar 包、NAS 部署排坑(网络池/shm/mem_limit)、browser_fetch 双后端切换、NAS 链路掐 MySQL 长连接→断线自愈、共享 MySQL buffer pool sizing(1G+512M redo,窗口内延迟 24.5s→0.79s) | ✅ 有现成方案 | 2026-10-22 |
 | [data-rewrite-safety.md](data-rewrite-safety.md) | 批量改"已入库数据"的安全护栏:RustFS 无版本控制覆盖即丢、重清洗前先抽样验证、CSS 剔除时含 img 节点不删、吃瓜站通用广告词黑名单会误伤正文、改完 Python 必须手动重启 uvicorn | ✅ 有现成方案 | 2026-10-01 |
 | [ui-contract-assert.md](ui-contract-assert.md) | 前端改版时 JS 契约核对:id/class/data-* 是暗契约,改 HTML 前先列 JS 用到的全部 selector,改完跑 headless CDP 断言(含行为切换断言,不止 id 存在性) | ✅ 有现成方案 | 2026-10-01 |
+| [async-request-race-testing.md](async-request-race-testing.md) | 前端请求竞态:"加载中就 return"的防重入早退在新入口出现后丢请求(修法=请求代际令牌);竞态测试要 fetch 手动挂起-放行的确定性构造,固定延迟挤窗口实测假绿(⛔ 条目) | ✅ 有现成方案 + ⛔ 避坑 | 2026-10-23 |
+| [verify-script-safety.md](verify-script-safety.md) | 自写验证脚本两类自伤雷:写数据的脚本缺隔离护栏会经 .env 写死生产(入口硬查三件套缺一拒绝);断言脚本失败分支的 return 跳过尾部退出码逻辑,RED 态 exit 0 骗过 CI | ✅ 有现成方案 | 2026-10-23 |
