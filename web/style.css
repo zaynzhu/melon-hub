@@ -1133,7 +1133,8 @@ input:focus:not(:focus-visible) { outline: none; }
 /* ---------- 响应式 ---------- */
 @media (max-width: 720px) {
   .topbar-inner { padding: 10px 14px; gap: 10px; }
-  /* 品牌独占一行,site-tabs 第二行可横向滚动,控件右齐 */
+  /* 品牌独占一行,tabs 占满整行可横向滚动;控件宽度 ~245px 在窄屏注定折行,
+     不再 clamp tabs 宽度给"让位"(旧契约 max-width 在窄屏只留死空) */
   .v2-brand { flex-basis: 100%; }
   .site-tabs {
     flex: initial;
@@ -1142,14 +1143,13 @@ input:focus:not(:focus-visible) { outline: none; }
     overflow-x: auto;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
-    max-width: calc(100vw - 130px);
   }
   .site-tabs::-webkit-scrollbar { display: none; }
   .site-tab { white-space: nowrap; flex-shrink: 0; }
-  /* 搜索框独占一行(手机键盘无 ESC,× 清空键要够显眼) */
-  .search-box { order: 3; flex-basis: 100%; }
+  .topbar-right { order: 3; margin-left: auto; }
+  /* 搜索框独占尾行(手机键盘无 ESC,× 清空键要够显眼) */
+  .search-box { order: 4; flex-basis: 100%; }
   .search-input { width: 100%; }
-  .topbar-right { order: 4; margin-left: auto; }
   .feed-wrap { padding: 16px 14px 32px; }
   .card-flow, .sectioned-flow { grid-template-columns: 1fr 1fr; gap: 12px; }
   .date-header { gap: 12px; padding-top: 20px; }
