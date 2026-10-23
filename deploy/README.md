@@ -16,8 +16,8 @@
 
 ```bash
 # 1) 解压部署包
-tar -xzf melon-hub-598fab5-linux-amd64.tar.gz
-cd melon-hub-598fab5-linux-amd64
+tar -xzf melon-hub-4d90f3e-linux-amd64.tar.gz
+cd melon-hub-4d90f3e-linux-amd64
 
 # 2) 校验完整性
 shasum -a 256 -c SHA256SUMS
