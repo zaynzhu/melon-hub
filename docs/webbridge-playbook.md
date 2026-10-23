@@ -70,15 +70,15 @@ if isinstance(out, str):
 
 `collector/typecho_collector.py` 所有 eval 均如此，新增代码别偷懒。
 
-### 坑 4：本项目 session 没关，下一位接手前需先清残留（已知缺口,见坑 3.5）
+### 坑 4：session 残留与清残局方法(2026-10-23 修订:生产链路已关,残留场景缩到 CLI 边角)
 
-**现状**：`collector/browser_fetch.py` 用固定 session 名 `melon-hub-imgfix`，脚本末尾**没有调用 `close_session()`**(虽在 L124 定义了);历史采集的 navigate 会复用同一 tab,但 tab 状态（当前 URL、年龄门 localStorage、Cookie）跨会话残留。
+**覆盖现状**:固定 session 名 `melon-hub-imgfix`;`close_session()` 已被 sync 调度(`finally`)/`wacg51`·`mrds` CLI(main 末尾)/`discover`(`finally`)调用(见坑 3.5);**仍不复位的只有 CLI 异常路径与 `scripts/thumbs_backfill.py` 裸跑**。
 
-**影响**：
-- 好处：CF 过盾后的有效 session 复用，省一次挑战
-- 坏处：残留状态可能是过期 CF 盾、或者上一个 task 没跑完的解密图（`window.__mhCT` 残留）
+**影响**(session 挂着不动时的双面性仍成立):
+- 好处:CF 过盾后的有效 session 复用,省一次挑战
+- 坏处:残留状态可能是过期 CF 盾、或者上一个 task 没跑完的解密图(`window.__mhCT` 残留)
 
-**接手自检**：跑采集前先 `pgrep -f collector.\|scripts/` 看有没有孤儿 python 还在跑（2026-09-19 深夜孤儿进程反而干完 24 篇的教训）；如要全新跑,改 `SESSION` 名或直接重启 webbridge daemon;单轮跑完别忘在 main 末尾加 `browser_fetch.close_session()`（二期待补齐,见坑 3.5）。
+**接手自检**(仍有效):跑采集前先 `pgrep -f collector.\|scripts/` 看有没有孤儿 python 还在跑(2026-09-19 深夜孤儿进程反而干完 24 篇的教训);如要全新跑,改 `SESSION` 名或直接重启 webbridge daemon。
 
 ---
 
