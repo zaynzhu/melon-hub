@@ -26,6 +26,22 @@ SEED_ARTICLES = None  # 在 seed() 里按当天日期构造
 
 def seed():
     import os
+    import tempfile
+
+    # 护栏(2026-10-23 评审发现):忘设隔离 env 时 collector 经 .env 落到生产
+    # MySQL/RustFS,seed 的假文章与"调度全关"settings 会直接污染生产,必须拒绝运行
+    url = os.environ.get('MELON_DB_URL', '')
+    if not url.startswith('sqlite:'):
+        raise SystemExit(f'拒绝运行:MELON_DB_URL 必须是 sqlite: 临时库(当前 {url or "未设置"};'
+                         '不设会经 .env 写入生产 MySQL)')
+    data = os.environ.get('MELON_DATA_DIR', '')
+    # realpath 归一:macOS 上 /tmp 是 /private/tmp 符号链接,gettempdir 在 /var 下
+    tmp_roots = {os.path.realpath(tempfile.gettempdir()), os.path.realpath('/tmp')}
+    if not data or not any(os.path.realpath(data).startswith(t) for t in tmp_roots):
+        raise SystemExit(f'拒绝运行:MELON_DATA_DIR 必须指向临时目录(当前 {data or "未设置"})')
+    if os.environ.get('MELON_S3_ENDPOINT') is None or os.environ.get('MELON_S3_BUCKET') is None:
+        raise SystemExit('拒绝运行:先显式置空 MELON_S3_ENDPOINT= MELON_S3_BUCKET= 阻断 .env 的 RustFS')
+
     from datetime import datetime, timedelta
 
     from collector.store import Database
