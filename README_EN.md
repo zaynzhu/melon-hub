@@ -122,7 +122,7 @@ Switch sites or views from the top bar (card-flow / timeline / three-column over
 | ✅ | Paginated history backfill and list thumbnail collection |
 | ✅ | Three-column overview and homeway mirror auto-discovery |
 | ✅ | Batch decryption of encrypted article images (2,788 images, 2026-09-29) |
-| ✅ | Web-UI manual sync + in-app scheduled collection (2026-09-29)
+| ✅ | Web-UI manual sync + in-app scheduled collection (2026-09-29) |
 | ✅ | Top-bar title fuzzy search (2026-10-23) |
 | ⏸️ | Cross-site dedup view (only 2-3 real duplicates found; revisit when corpus grows) |
 | 📋 | Docker image build verification |
