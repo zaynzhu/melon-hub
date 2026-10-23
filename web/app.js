@@ -1,9 +1,10 @@
 // melon-hub 前端:站点 Tab + 卡片流 + 全屏阅读抽屉
 (() => {
-  const state = { sources: [], current: '', offset: 0, limit: 50, loading: false, view: 'cards', cache: [] };
+  const state = { sources: [], current: '', offset: 0, limit: 50, loading: false, view: 'cards', cache: [], q: '' };
 
   const $ = (id) => document.getElementById(id);
   const flow = $('card-flow'), meta = $('feed-meta'), loadMore = $('load-more');
+  const searchInput = $('search-input'), searchClear = $('search-clear');
 
   async function api(path, opts) {
     const resp = await fetch(path, opts);
@@ -206,6 +207,9 @@
 
   async function switchTab(source) {
     state.current = source;
+    // 切站即清搜索:搜索跟随当前 Tab,跨站找同话题回"全部"再搜
+    state.q = '';
+    searchInput.value = '';
     // 三栏总览展示全部站点,点站点 Tab 时回到该站的卡片流
     if (state.view === 'columns') {
       state.view = 'cards';
@@ -224,11 +228,55 @@
   // ---- 视图切换(卡片流 / 时间线) ----
   document.querySelectorAll('.view-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
+      // 三栏总览按站自取数据、不吃 q:进三栏前清空搜索,保持所见一致
+      if (btn.dataset.view === 'columns' && state.q) {
+        state.q = '';
+        searchInput.value = '';
+      }
       document.querySelectorAll('.view-btn').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       state.view = btn.dataset.view;
       render();
     });
+  });
+
+  // ---- 标题搜索(模糊匹配后端 q 参数:空白分词 AND,字面子串) ----
+  let searchTimer = null;
+
+  function applySearch(q) {
+    if (q === state.q) return; // 防抖与回车对同一值幂等
+    state.q = q;
+    // 搜索结果只有卡片流/时间线能表达;时间线下输入自动切回卡片流
+    if (q && state.view !== 'cards') {
+      state.view = 'cards';
+      document.querySelectorAll('.view-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.view === 'cards');
+      });
+    }
+    state.offset = 0;
+    loadArticles(true);
+  }
+
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    // 停顿 300ms 自动搜;回车立即
+    searchTimer = setTimeout(() => applySearch(searchInput.value.trim()), 300);
+  });
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      clearTimeout(searchTimer);
+      applySearch(searchInput.value.trim());
+    } else if (e.key === 'Escape') {
+      searchInput.value = '';
+      clearTimeout(searchTimer);
+      applySearch('');
+    }
+  });
+  searchClear.addEventListener('click', () => {
+    searchInput.value = '';
+    searchInput.focus();
+    clearTimeout(searchTimer);
+    applySearch('');
   });
 
   function render() {
@@ -432,17 +480,22 @@
     try {
       const q = new URLSearchParams({ limit: state.limit, offset: state.offset });
       if (state.current) q.set('source', state.current);
+      if (state.q) q.set('q', state.q);
       const data = await api('/api/articles?' + q);
       if (reset) {
         state.cache = [];
         flow.innerHTML = '';
       }
       state.cache = state.cache.concat(data.articles);
-      meta.textContent = `共 ${data.total} 条${state.current ? ' · ' + sourceName(state.current) : ''}`;
+      meta.textContent = `共 ${data.total} 条`
+        + (state.current ? ' · ' + sourceName(state.current) : '')
+        + (state.q ? ` · 搜索“${state.q}”` : '');
       render();
       loadMore.classList.toggle('hidden', state.cache.length >= data.total);
       if (!state.cache.length) {
-        meta.textContent = '暂无数据 — 点击"刷新"拉取,或先运行采集器';
+        meta.textContent = state.q
+          ? `没有匹配“${state.q}”的标题`
+          : '暂无数据 — 点击"刷新"拉取,或先运行采集器';
       }
     } catch (e) {
       meta.textContent = '载入失败:' + e.message;

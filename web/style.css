@@ -238,6 +238,48 @@ input:focus:not(:focus-visible) { outline: none; }
 .site-tab[data-source="wacg51"]:hover:not(.active) { color: var(--src-wacg51); }
 .site-tab[data-source="mrds"]:hover:not(.active) { color: var(--src-mrds); }
 
+/* 顶栏标题搜索框 */
+.search-box { position: relative; display: flex; align-items: center; }
+.search-input {
+  width: 210px;
+  background: var(--bg-input);
+  color: var(--text-main);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  padding: 7px 28px 7px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+.search-input::placeholder { color: var(--text-faint); }
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent-ring);
+  box-shadow: 0 0 0 3px var(--accent-faint);
+}
+/* 自带清空键,屏蔽 webkit 原生 ✕ 免得双图标 */
+.search-input::-webkit-search-cancel-button { display: none; }
+.search-clear {
+  position: absolute;
+  right: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 999px;
+  transition: color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.search-clear:hover { color: var(--text-main); background: var(--bg-chip); }
+/* 输入为空时隐藏清空键(placeholder 可见 = 值为空) */
+.search-box:has(.search-input:placeholder-shown) .search-clear { visibility: hidden; }
+
 /* 顶栏右侧控件区 */
 .topbar-right { display: flex; align-items: center; gap: 10px; }
 .view-toggle {
@@ -1104,7 +1146,10 @@ input:focus:not(:focus-visible) { outline: none; }
   }
   .site-tabs::-webkit-scrollbar { display: none; }
   .site-tab { white-space: nowrap; flex-shrink: 0; }
-  .topbar-right { order: 3; margin-left: auto; }
+  /* 搜索框独占一行(手机键盘无 ESC,× 清空键要够显眼) */
+  .search-box { order: 3; flex-basis: 100%; }
+  .search-input { width: 100%; }
+  .topbar-right { order: 4; margin-left: auto; }
   .feed-wrap { padding: 16px 14px 32px; }
   .card-flow, .sectioned-flow { grid-template-columns: 1fr 1fr; gap: 12px; }
   .date-header { gap: 12px; padding-top: 20px; }
