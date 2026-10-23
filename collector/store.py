@@ -215,17 +215,31 @@ class Database:
             if not self._mysql:
                 self.conn.commit()
 
-    def list_articles(self, source=None, limit=50, offset=0):
-        """按发布时间倒序列出文章(供后端列表接口)。"""
+    def _where(self, source=None, q=None):
+        """列表查询共用的 WHERE 拼装:source 过滤 + 标题搜索。
+
+        q 按空白拆词、要求全部命中(AND);instr 做字面子串匹配,
+        % 和 _ 是普通字符无需转义,MySQL/SQLite 双兼容;
+        q 为空或纯空白视为不过滤。
+        """
+        conds, args = [], ()
+        if source:
+            conds.append(f'source={self.ph}')
+            args = args + (source,)
+        if q and q.strip():
+            for term in q.split():
+                conds.append(f'instr(title, {self.ph}) > 0')
+                args = args + (term,)
+        return (' WHERE ' + ' AND '.join(conds) if conds else ''), args
+
+    def list_articles(self, source=None, limit=50, offset=0, q=None):
+        """按发布时间倒序列出文章(供后端列表接口);
+        q 为标题模糊搜索,语义见 _where。"""
         cols = ('SELECT source, article_key, url, title, summary, published_at,'
                 ' images_json, thumb_object, status FROM articles')
-        if source:
-            sql = cols + f' WHERE source={self.ph}'
-            args = (source,)
-        else:
-            sql, args = cols, ()
-        sql += f' ORDER BY published_at DESC LIMIT {self.ph} OFFSET {self.ph}'
-        args = tuple(args) + (limit, offset)
+        where, args = self._where(source, q)
+        sql = cols + where + f' ORDER BY published_at DESC LIMIT {self.ph} OFFSET {self.ph}'
+        args = args + (limit, offset)
         with self._lock:
             rows = self._exec(sql, args).fetchall()
         return [dict(r) for r in rows]
@@ -236,13 +250,10 @@ class Database:
             rows = self._exec('SELECT * FROM articles').fetchall()
         return [dict(r) for r in rows]
 
-    def count_articles(self, source=None):
-        """全表或指定站点文章总数(供列表接口元信息显示,和分页无关)。"""
-        sql = 'SELECT COUNT(*) AS n FROM articles'
-        args = ()
-        if source:
-            sql += f' WHERE source={self.ph}'
-            args = (source,)
+    def count_articles(self, source=None, q=None):
+        """文章总数(过滤条件与 list_articles 一致,供列表接口元信息显示,和分页无关)。"""
+        where, args = self._where(source, q)
+        sql = 'SELECT COUNT(*) AS n FROM articles' + where
         with self._lock:
             row = self._exec(sql, args).fetchone()
         return dict(row)['n'] if row else 0

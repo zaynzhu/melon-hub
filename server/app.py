@@ -74,15 +74,17 @@ def sites_detail():
 
 
 @app.get('/api/articles')
-def articles(source: str = None, limit: int = Query(50, le=200), offset: int = 0):
+def articles(source: str = None, limit: int = Query(50, le=200), offset: int = 0, q: str = None):
+    """q:标题模糊搜索(空白分词 AND,字面子串匹配);纯空白视为不过滤。"""
     if source and source not in load_config()['sites']:
         raise HTTPException(404, f'未知站点:{source}')
-    rows = db.list_articles(source, limit, offset)
+    q = (q or '').strip() or None
+    rows = db.list_articles(source, limit, offset, q)
     for r in rows:
         r['cover'] = _cover(r)
         r.pop('images_json', None)
         r['source_url'] = _source_url(r)
-    return {'total': db.count_articles(source), 'articles': rows}
+    return {'total': db.count_articles(source, q), 'articles': rows}
 
 
 @app.get('/api/articles/{source}/{article_key}')
