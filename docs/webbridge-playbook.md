@@ -13,7 +13,7 @@ kimi-webbridge 是本项目的**一切浏览器路线的地基**：列表采集�
 **调用铁律**（全局规范 + 本项目实践）：
 1. 先健康检查（`browser_fetch.ensure_ready()`）——不查就开跑，挂起或无声失败很难定位
 2. 页面语义操作，别用坐标截图硬点
-3. **任务结束关闭 session**（见第 3 节——本项目目前**没做**，已知缺口）
+3. **任务结束关闭 session**(见第 3 节;2026-10-23 核实:生产链路已全部收尾——sync 调度收尾用 `finally` 关、collector CLI 主路径末尾关,discover 也在 finally;残余缺口:CLI 异常路径与 `scripts/thumbs_backfill.py` 裸跑仍不关,见 3.5)
 
 ---
 
@@ -30,15 +30,23 @@ kimi-webbridge 是本项目的**一切浏览器路线的地基**：列表采集�
 - 跨页面传值走服务端/文件,别走 window 变量(页面重载 natural 重建,与 webbridge 无关)
 - navigate（尤其多 tab 切换）后,evaluate 前先打一句 `console.log` 或 `location.href` 确认上下文
 
-### 坑 3.5：`close_session()` 函数已存在但没人调
+### 坑 3.5：`close_session()` 的收尾覆盖(2026-10-23 核实,替代 09-20"没人调"旧观测)
 
-`browser_fetch.py` 底部有 `def close_session()`（2026-09-19 就写了,见 L124-125）,但当前 `scripts/thumbs_backfill.py` 和各 `collector/*.py` 的 main 都**没有调用**——session `melon-hub-imgfix` 会一直挂着,下次跑新任务还在用上次的状态。
+`browser_fetch.close_session()`(原 L124-125,双后端重写后在 L250,playwright/webbridge 都关)当时的判断是"存在但没人调";**现已补齐**:
 
-**影响分两面**：
-- 好处：CF 有效 cookie 复用省时间(过盾会话不丢)
+- `server/sync.py` 采集收尾放 `finally`+内部 try/except(调度链路连异常路径也必关)
+- `collector/wacg51.py` / `collector/mrds.py` main 末尾无条件调(但**不在 finally 里**——CLI 中途抛异常会渗漏)
+- `collector/discover.py` 在 `finally` 中调
+
+**残余缺口(下次遇到"上次残留状态"现象先查这两处)**:
+- `scripts/thumbs_backfill.py` 裸跑仍不调(`main()` 到 `ensure_ready()` 后直通结束)
+- `wacg51/mrds` CLI 的异常路径(非 finally)
+
+**影响分两面**(取舍判断仍有效):
+- 好处:CF 有效 cookie 复用省时间(过盾会话不丢)
 - 坏处:残留状态可能带过期 CF 盾/cookie,或残留`window.__mhCT`大字符串
 
-**应对(待补齐)**：各采集脚本 main 末尾统一加 `browser_fetch.close_session()`；二期补自动化前必须做,否则 launchd 定时任务会带脏 session 跑。
+~~旧应对(待补齐)~~:launchd 方案已于 2026-09-29 关闭,定时采集改应用内调度且走 sync 的 finally 关,原"二期必须做"的担忧已由调度链路自然消化;CLI 两处残余缺口不修也在可接受范围(手动脚本,进程退出即清),要彻底收净时把三处也包 try/finally 即可。
 
 ### 坑 2：`evaluate` 注入大字符串偶发超时/挂起，分块是唯一稳定解法
 
