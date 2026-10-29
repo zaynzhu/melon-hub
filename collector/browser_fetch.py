@@ -144,6 +144,11 @@ def _launch_playwright_browser():
         return
     from playwright.sync_api import sync_playwright
     pw = sync_playwright().start()
+    # pw 先入 state:start 之后 launch/context/page 任一步失败时,
+    # close_session 才能拿到它去 stop——否则 loop 泄漏在当前线程,
+    # 同线程之后每次 start() 必报"Sync API inside the asyncio loop"
+    # (2026-10-29 NAS 定时采集连续失败根因,复现见 scripts/verify_pw_loop_leak.py)
+    _playwright_state['pw'] = pw
     browser = pw.chromium.launch(headless=True)
     ctx = browser.new_context(
         user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
@@ -153,7 +158,6 @@ def _launch_playwright_browser():
     _playwright_state['browser'] = browser
     _playwright_state['ctx'] = ctx
     _playwright_state['page'] = page
-    _playwright_state['pw'] = pw
 
 
 def _ensure_playwright():
