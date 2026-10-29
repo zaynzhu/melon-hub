@@ -14,3 +14,4 @@
 | [ui-contract-assert.md](ui-contract-assert.md) | 前端改版时 JS 契约核对:id/class/data-* 是暗契约,改 HTML 前先列 JS 用到的全部 selector,改完跑 headless CDP 断言(含行为切换断言,不止 id 存在性) | ✅ 有现成方案 | 2026-10-01 |
 | [async-request-race-testing.md](async-request-race-testing.md) | 前端请求竞态:"加载中就 return"的防重入早退在新入口出现后丢请求(修法=请求代际令牌);竞态测试要 fetch 手动挂起-放行的确定性构造,固定延迟挤窗口实测假绿(⛔ 条目) | ✅ 有现成方案 + ⛔ 避坑 | 2026-10-23 |
 | [verify-script-safety.md](verify-script-safety.md) | 自写验证脚本两类自伤雷:写数据的脚本缺隔离护栏会经 .env 写死生产(入口硬查三件套缺一拒绝);断言脚本失败分支的 return 跳过尾部退出码逻辑,RED 态 exit 0 骗过 CI | ✅ 有现成方案 | 2026-10-23 |
+| [playwright-sync-loop-leak.md](playwright-sync-loop-leak.md) | playwright sync API 在长驻线程的 loop 泄漏:一次 launch 失败永久污染调度线程,"手动正常定时必败"三特征识别+引用先存后用修法 | ✅ 有现成方案 | 2026-10-29 |
