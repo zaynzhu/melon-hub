@@ -3,7 +3,7 @@
 # 改配置直接改下方 environment;敏感字段(DB 密码/S3 密钥)建议仍走 .env 或 docker secret
 services:
   app:
-    image: melon-hub:ce5d0f3
+    image: melon-hub:1c70694
     container_name: melon-hub
     restart: unless-stopped
     ports:
