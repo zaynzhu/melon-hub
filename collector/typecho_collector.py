@@ -104,14 +104,18 @@ def collect_articles(site_id, limit=12):
 
 
 def collect_thumbs(site_id, limit=40, page_url=None):
-    """从列表页卡片的 base64 背景图(站点服务端直出明文)生成缩略图入库。
+    """从列表页卡片读图床 URL,服务端取密文、解密、压缩后入库。
 
-    页面内 canvas 压到 360px 宽 JPEG 再分块传回,避开加密 CDN 与大传输。
+    2026-10-30 起源站改为 x-bg-loader-url 属性(mrds 为卡内
+    loadBannerDirect 脚本),由页面 JS 惰性解密;原先读 style 内联
+    base64 的路线失效。改为逐卡取 outerHTML → Python 解析 URL →
+    服务端下载解密(见 collector/image_cipher.py)→ 压到 360px 入库。
 
-    漏网文章(被挤出可翻页范围)的缩略图补抓走
-    scripts/thumbs_backfill.py(文章页首图是明文 data:URI,可兜底);
+    漏网文章的缩略图补抓走 scripts/thumbs_backfill.py(文章页首图路线);
     原理与踩坑详见 docs/image-decrypt-playbook.md。
     """
+    from collector import image_cipher
+
     site = _site(site_id)
     db = Database()
     store = ObjectStore()
@@ -125,53 +129,36 @@ def collect_thumbs(site_id, limit=40, page_url=None):
     done = 0
     for i in range(total):
         try:
-            meta = json.loads(browser_fetch.eval_js(f'''(async () => {{
-              const card = document.querySelectorAll('.post-card')[{i}];
-              const key = (card.id || '').replace('post-card-', '');
-              if (!/^\\d+$/.test(key)) return JSON.stringify({{err: 'ad card'}});
-              const style = (card.querySelector('.blog-background')
-                ?.getAttribute('style')) || '';
-              const m = style.match(/base64,([A-Za-z0-9+/=]+)/);
-              if (!m) return JSON.stringify({{err: 'no bg'}});
-              const img = new Image();
-              await new Promise((res, rej) => {{
-                img.onload = res; img.onerror = rej;
-                img.src = 'data:image/jpeg;base64,' + m[1];
-              }});
-              const w = 360;
-              const h = Math.max(1, Math.round(img.naturalHeight * w / img.naturalWidth));
-              const cv = document.createElement('canvas');
-              cv.width = w; cv.height = h;
-              cv.getContext('2d').drawImage(img, 0, 0, w, h);
-              window.__mhThumbB64 = cv.toDataURL('image/jpeg', 0.72).split(',')[1];
-              return JSON.stringify({{len: window.__mhThumbB64.length, key}});
-            }})()'''.replace('if (!db_ref) {}', '')))
+            card_html = browser_fetch.eval_js(
+                f'document.querySelectorAll(".post-card")[{i}].outerHTML')
         except browser_fetch.BrowserError as exc:
-            print(f'  [warn] 第 {i} 张缩略图失败,跳过: {exc}', file=sys.stderr)
+            print(f'  [warn] 第 {i} 张卡片读取失败,跳过: {exc}', file=sys.stderr)
             time.sleep(2)
             continue
-        if 'err' in meta:
-            time.sleep(1)
+        pairs = image_cipher.extract_card_sources(card_html)
+        if not pairs:
             continue
-        b64, offset = '', 0
-        while offset < meta['len']:
-            b64 += browser_fetch.eval_js(
-                f'window.__mhThumbB64.slice({offset}, {offset + 40000})')
-            offset += 40000
-            if offset < meta['len']:
-                time.sleep(2)
-        browser_fetch.eval_js('window.__mhThumbB64 = null')
-        import base64 as _b64
-        raw = _b64.b64decode(b64)
-        if raw[:2] != b'\xff\xd8':
-            print(f'  [warn] 第 {i} 张非 JPEG,跳过', file=sys.stderr)
+        key, src = pairs[0]
+        try:
+            if src.startswith('data:image/'):
+                raw = image_cipher.data_uri_bytes(src)
+            else:
+                raw = image_cipher.fetch_plain_image(src, site_id)
+            if not raw:
+                print(f'  [warn] 第 {i} 张缩略图无明文({key})', file=sys.stderr)
+                continue
+            thumb = image_cipher.make_thumb(raw)
+        except Exception as exc:  # noqa: BLE001 单张失败不中断整批
+            print(f'  [warn] 第 {i} 张缩略图失败({key}): {exc}', file=sys.stderr)
             continue
-        key = meta['key']
+        if not thumb or thumb[:2] != b'\xff\xd8':
+            print(f'  [warn] 第 {i} 张缩略图压缩失败({key})', file=sys.stderr)
+            continue
         thumb_key = f'{site_id}/{key}/thumb.jpg'
-        store.put(thumb_key, raw)
+        store.put(thumb_key, thumb)
         db.set_thumb(site_id, key, thumb_key)
         done += 1
-        print(f'  [缩略图] {thumb_key}({len(raw)}B)')
+        print(f'  [缩略图] {thumb_key}({len(thumb)}B)')
         time.sleep(2)
     print(f'{site_id} 缩略图完成:{done} 张')
 

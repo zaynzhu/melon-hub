@@ -71,16 +71,17 @@ def _backup_path(key):
 def _extract_keyiv(js_text):
     """从站内混淆 JS 提取 AES 密钥/IV(字符码下划线串)。
 
-    主模式:cc("102_53_...") —— 站方当前混淆器的拼接函数名;失效时回退到
-    AES.decrypt 调用点附近任意字符码串。候选必须恰好 2 个,多了少了都人工
-    确认,不猜。
+    主模式:cc("102_53_...") —— 站方旧版混淆器的拼接函数名;失效时回退到
+    AES 解密调用点(含 AES['decrypt'] 写法)附近的字符码串——2026-10-30
+    wacg51 改版后密钥改为单引号形式并移入 Worker,旧主模式匹配不到。
+    候选必须恰好 2 个,多了少了都人工确认,不猜。
     """
     candidates = re.findall(r'cc\("([0-9_]+)"\)', js_text)
     if not candidates:
         window = ''
-        for m in re.finditer(r'AES\.decrypt', js_text):
-            window += js_text[max(0, m.start() - 800):m.end() + 800]
-        candidates = re.findall(r'"([0-9]+(?:_[0-9]+)+)"', window)
+        for m in re.finditer(r"AES'\]\['decrypt'\]|AES\.decrypt|'decryptjs'", js_text):
+            window += js_text[max(0, m.start() - 200):m.end() + 1500]
+        candidates = re.findall(r"""['"]([0-9]+(?:_[0-9]+)+)['"]""", window)
 
     decoded = []
     seen = set()

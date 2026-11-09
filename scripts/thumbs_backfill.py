@@ -222,45 +222,42 @@ def backfill_hl365_offline(db, store, missing, js_files=None):
 
 
 def backfill_article_firstimg(db, store, source, missing, browser):
-    """wacg51/mrds 路线:文章页首图是明文 data:URI,直接取当缩略图。
+    """wacg51/mrds 路线:取文章页首图补缩略图。
+
+    源站 2026-10 改版后首图不再是 data:URI,改为图片 CDN 密文 URL
+    (z/x-image-loader-url 属性);服务端取密文 + Python 解密(见
+    collector/image_cipher.py),压到 360px 入库。
 
     踩坑:mrds 文章页没有 .post-card 节点,wait_selector 必须用 .post-content。
     """
+    from collector import image_cipher
     home = load_config()['sites'][source]['home'].rstrip('/')
     ok = 0
     for key in missing:
         url = f'{home}/archives/{key}/'
         try:
-            browser.navigate(url, wait_selector='.post-content', wait_seconds=20)
-            time.sleep(2)
-            meta = json.loads(browser.eval_js('''(async () => {
-              const img = document.querySelector(".post-content img");
-              if (!img) return JSON.stringify({err: "no img"});
-              let s = "";
-              if ((img.src || "").startsWith("data:")) s = img.src.split(",")[1];
-              else if ((img.src || "").startsWith("blob:")) {
-                const r = await fetch(img.src); const b = await r.blob();
-                const buf = new Uint8Array(await b.arrayBuffer());
-                for (let i = 0; i < buf.length; i += 8192)
-                  s += String.fromCharCode.apply(null, buf.subarray(i, i + 8192));
-                s = btoa(s);
-              } else return JSON.stringify({err: "src:" + img.src.slice(0, 50)});
-              window.__mhB64 = s;
-              return JSON.stringify({len: s.length});
-            })()'''))
-            if 'err' in meta:
-                print(f'  [skip] {key}: {meta["err"]}', file=sys.stderr)
+            html, _ = browser.fetch_rendered(url, wait_selector='.post-content')
+            srcs = image_cipher.extract_article_image_srcs(html)
+            if not srcs:
+                print(f'  [skip] {key}: 正文无图', file=sys.stderr)
                 continue
-            plain = ''
-            offset = 0
-            while offset < meta['len']:
-                plain += browser.eval_js(f'window.__mhB64.slice({offset}, {offset + _CHUNK})')
-                offset += _CHUNK
-                if offset < meta['len']:
-                    time.sleep(2)
-            browser.eval_js('window.__mhB64 = ""')
-            if _save_thumb(db, store, source, key, base64.b64decode(plain)):
-                ok += 1
+            src = srcs[0]
+            if src.startswith('data:image/'):
+                raw = image_cipher.data_uri_bytes(src)
+            else:
+                raw = image_cipher.fetch_plain_image(src, source)
+            if not raw:
+                print(f'  [fail] {key}: 图片无明文', file=sys.stderr)
+                continue
+            thumb = image_cipher.make_thumb(raw)
+            if not thumb or thumb[:2] != b'\xff\xd8':
+                print(f'  [fail] {key}: 缩略图压缩失败', file=sys.stderr)
+                continue
+            thumb_key = f'{source}/{key}/thumb.jpg'
+            store.put(thumb_key, thumb)
+            db.set_thumb(source, key, thumb_key)
+            ok += 1
+            print(f'  [缩略图] {thumb_key}({len(thumb)}B)')
             time.sleep(2)
         except Exception as exc:  # noqa: BLE001 单篇失败不中断整批
             print(f'  [fail] {key}: {exc}', file=sys.stderr)
