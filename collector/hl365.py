@@ -11,16 +11,19 @@ import hashlib
 import json
 import re
 import sys
+import time
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timezone
+from urllib.parse import urljoin
 
-from collector import clean, fetch
+from collector import clean, fetch, typecho
 from collector.config import load_config
 from collector.store import Database, ObjectStore, sha16
 
 SOURCE = 'hl365'
 _ARTICLE_ID_RE = re.compile(r'/archives/(\d+)\.html')
+_POST_CARD_ID_RE = re.compile(r'post-card-(\d+)')
 _CONTENT_NS = '{http://purl.org/rss/1.0/modules/content/}encoded'
 
 
@@ -68,6 +71,41 @@ def _iso_utc(text):
         return None
 
 
+def parse_home_list(html, base_url):
+    """解析首页列表卡片,供 RSS 漏条兜底。
+
+    卡片结构:article > a[href=/archives/<id>.html] > .post-card#post-card-<id>。
+    标题取 .post-card-bottom-title(卡内 .post-card-title 是"热搜 HOT"栏目位,
+    不是文章标题);时间取 span[itemprop=datePublished] 的 content。
+    """
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, 'html.parser')
+    items, seen = [], set()
+    for card in soup.select('.post-card'):
+        m = _POST_CARD_ID_RE.search(card.get('id') or '')
+        if not m or m.group(1) in seen:
+            continue
+        a = card.find_parent('a', href=_ARTICLE_ID_RE)
+        if a is None:
+            continue
+        title_el = (card.select_one('.post-card-bottom-title')
+                    or card.select_one('.post-card-title'))
+        title = title_el.get_text(' ', strip=True) if title_el else ''
+        if len(title) < 6 or title == '热搜 HOT':
+            continue
+        time_el = card.select_one('span[itemprop="datePublished"]')
+        published = _iso_utc(time_el.get('content', '')) if time_el else None
+        seen.add(m.group(1))
+        items.append({
+            'article_key': m.group(1),
+            'url': urljoin(base_url, a['href']),
+            'title': title,
+            'published_at': published,
+            'summary': '',
+        })
+    return items
+
+
 def download_images(urls, article_key, store, source=SOURCE):
     """下载图片入对象存储,key 由源 URL 哈希导出(重跑幂等)。
 
@@ -98,9 +136,11 @@ def collect(pages=1):
     db = Database()
     store = ObjectStore()
 
-    stats = {'new': 0, 'updated': 0, 'skipped': 0}
+    stats = {'new': 0, 'updated': 0, 'skipped': 0,
+             'home_new': 0, 'home_failed': 0}
     seen = 0
     first_keys = set()
+    feed_keys = set()
     for page in range(1, pages + 1):
         feed_url = site['home'].rstrip('/') + site['feed_path']
         if page > 1:
@@ -117,6 +157,7 @@ def collect(pages=1):
             if not items:
                 break
         first_keys.update(it['article_key'] for it in items)
+        feed_keys.update(it['article_key'] for it in items)
         seen += len(items)
 
         for entry in items:
@@ -160,8 +201,79 @@ def collect(pages=1):
                   f'{"更新" if old else "入库"}:{entry["title"][:40]} '
                   f'({len(images)} 图)')
 
+    # RSS 漏条兜底(2026-11-06 起 feed 滞后):首页列表有、feed 没有且比库内
+    # 最新发布时间更新的条目,直接抓文章页入库;单篇失败下轮重试(首页覆盖
+    # 近几天文章)。只补比库内最新更新的,避免把首页置顶老文全量重抓。
+    newest = ''
+    latest_rows = db.list_articles(SOURCE, limit=1)
+    if latest_rows and latest_rows[0].get('published_at'):
+        newest = latest_rows[0]['published_at']
+    home_items = []
+    try:
+        home_resp = fetch.get(site['home'].rstrip('/') + '/')
+        home_resp.raise_for_status()
+        home_items = parse_home_list(home_resp.text, site['home'])
+    except Exception as exc:  # noqa: BLE001 兜底失败不阻断 RSS 主流程
+        print(f'[warn] 首页兜底抓取失败:{exc}', file=sys.stderr)
+    for entry in home_items:
+        if entry['article_key'] in feed_keys:
+            continue
+        published = entry['published_at'] or ''
+        if newest and published and isinstance(newest, str) and published < newest:
+            continue
+        old = db.find(SOURCE, entry['article_key'])
+        if old and old['content_object']:
+            continue
+        try:
+            art_resp = fetch.get(entry['url'])
+            art_resp.raise_for_status()
+            cleaned, image_urls = typecho.parse_article(art_resp.text)
+            if not cleaned:
+                print(f'  [warn] 正文容器缺失,跳过 {entry["url"]}',
+                      file=sys.stderr)
+                stats['home_failed'] += 1
+                continue
+            time.sleep(2)
+            images = download_images(image_urls, entry['article_key'], store)
+            html_stored = cleaned
+            for img in images:
+                if img['key']:
+                    html_stored = html_stored.replace(
+                        f'src="{img["source_url"]}"', f'src="{img["key"]}"')
+            text = clean.clean_text(cleaned)
+            payload = {
+                'source': SOURCE,
+                'article_key': entry['article_key'],
+                'url': entry['url'],
+                'title': entry['title'],
+                'published_at': entry['published_at'],
+                'html': html_stored,
+                'images': images,
+            }
+            object_key = f'{SOURCE}/{entry["article_key"]}/content.json'
+            store.put(object_key, json.dumps(
+                payload, ensure_ascii=False).encode('utf-8'))
+            db.upsert(
+                source=SOURCE, article_key=entry['article_key'],
+                url=entry['url'], title=entry['title'],
+                summary=text[:150],
+                published_at=entry['published_at'],
+                title_hash=sha16(entry['title']),
+                content_hash=sha16(text),
+                content_object=object_key, images=images)
+            stats['home_new'] += 1
+            stats['new'] += 1
+            print(f'  [{SOURCE}/{entry["article_key"]}] 首页兜底入库:'
+                  f'{entry["title"][:40]} ({len(images)} 图)')
+        except Exception as exc:  # noqa: BLE001 单篇失败不中断
+            print(f'  [warn] 首页兜底失败 {entry["article_key"]}: {exc}',
+                  file=sys.stderr)
+            stats['home_failed'] += 1
+            time.sleep(2)
+
     print(f'完成:拉取 {seen} 条,新增 {stats["new"]},更新 {stats["updated"]},'
-          f'跳过 {stats["skipped"]}')
+          f'跳过 {stats["skipped"]};首页兜底新增 {stats["home_new"]},'
+          f'失败 {stats["home_failed"]}')
     return stats
 
 
