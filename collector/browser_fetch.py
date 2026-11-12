@@ -10,6 +10,7 @@
 import json
 import os
 import subprocess
+import sys
 import time
 
 import requests
@@ -166,8 +167,21 @@ def _ensure_playwright():
 
 def _navigate_playwright(url, wait_selector='.post-card', wait_seconds=25):
     page = _playwright_state['page']
+    # 瞬时链路故障(ERR_CONNECTION_CLOSED/超时)重试 2 次再放弃——
+    # 2026-11-12 凌晨一次瞬断曾让 wacg51 整站失败并触发误判"主站失效"
+    last_exc = None
+    for attempt in range(3):
+        try:
+            page.goto(url, timeout=45000, wait_until='domcontentloaded')
+            break
+        except Exception as exc:  # noqa: BLE001 单次导航失败重试
+            last_exc = exc
+            print(f'  [warn] 导航失败(第 {attempt + 1}/3 次) {url}: {exc}',
+                  file=sys.stderr)
+            time.sleep(3)
+    else:
+        raise BrowserError(f'导航失败 {url}:{last_exc}')
     deadline = time.time() + wait_seconds
-    page.goto(url, timeout=45000, wait_until='domcontentloaded')
     time.sleep(8)  # CF 托管挑战放行窗口,见 docs/lessons/headless-browser-pass-cf.md
     while time.time() < deadline:
         try:
