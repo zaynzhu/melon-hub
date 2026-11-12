@@ -236,10 +236,37 @@ def _audit_gaps(source):
         return {'pending_content': -1, 'no_thumb': -1, 'img_failed': -1}
 
 
-def _decrypt_new_cipher_images():
-    """采集收尾校验:新落的密文图自动解密(三站 CDN 加密分发,见 playbook)。
+def _recent_image_keys(hours=24):
+    """近 N 小时入库文章引用的图片对象 key(增量盘点)。
 
-    全库幂等盘点(明文秒过),密文仅在配置了 MELON_DECRYPT_JS 时解密,
+    2026-11-12 前每次收尾都全库逐读约 1.4 万张图片做魔数检查,boto3 又无
+    超时,mrds 收尾曾因此卡死 10 小时;改为只盘点近期新图。历史密文修复
+    仍用 scripts/article_img_decrypt.py 手动全库跑。
+    """
+    db = _new_db()
+    since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime(
+        '%Y-%m-%dT%H:%M:%SZ')
+    with db.conn.cursor() as c:
+        c.execute(
+            f'SELECT images_json FROM articles WHERE created_at >= {db.ph}',
+            (since,))
+        rows = c.fetchall()
+    keys = set()
+    for row in rows:
+        try:
+            for im in json.loads(row['images_json'] or '[]'):
+                if im.get('key'):
+                    keys.add(im['key'])
+        except (TypeError, ValueError):
+            continue
+    return sorted(keys)
+
+
+def _decrypt_new_cipher_images():
+    """采集收尾校验:近 24h 新落密文图自动解密(三站 CDN 加密分发,见 playbook)。
+
+    增量盘点,只检查近期入库文章引用的图片,不再全库逐读(见
+    _recent_image_keys);密文仅在配置了 MELON_DECRYPT_JS 时解密,
     未配置则计入 failed 并打警告——宁可显式暴露也不静默留密文。
     """
     import sys
@@ -247,7 +274,7 @@ def _decrypt_new_cipher_images():
         os.path.abspath(__file__))), 'scripts'))
     from article_img_decrypt import auto_decrypt_new
     try:
-        stats = auto_decrypt_new()
+        stats = auto_decrypt_new(keys=_recent_image_keys())
         if stats['cipher'] and not stats['ok'] and not os.environ.get('MELON_DECRYPT_JS'):
             _log(f"[warn] {stats['cipher']} 张密文图未解密:"
                  '配置 MELON_DECRYPT_JS 指向站内 image.*.js 后自动生效')

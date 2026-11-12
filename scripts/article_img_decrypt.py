@@ -128,14 +128,18 @@ def auto_decrypt_new(js_files=None, keys=None):
     store = ObjectStore()
     db = Database()
     checked = keys if keys is not None else _collect_keys(db)
+    stats = {'checked': len(checked), 'cipher': 0, 'ok': 0, 'failed': []}
     plain, cipher = [], []
     for k in checked:
         try:
             raw = store.get_bytes(k)
         except FileNotFoundError:
             continue  # 缺失不入库,重抓归 thumbs_backfill
+        except Exception:  # noqa: BLE001 超时/网络异常计入失败,不中断整批
+            stats['failed'].append(k)
+            continue
         (plain if _kind(raw) else cipher).append((k, raw))
-    stats = {'checked': len(checked), 'cipher': len(cipher), 'ok': 0, 'failed': []}
+    stats['cipher'] = len(cipher)
     if not cipher:
         return stats
     if js_files is None:
