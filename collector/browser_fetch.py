@@ -150,7 +150,13 @@ def _launch_playwright_browser():
     # 同线程之后每次 start() 必报"Sync API inside the asyncio loop"
     # (2026-10-29 NAS 定时采集连续失败根因,复现见 scripts/verify_pw_loop_leak.py)
     _playwright_state['pw'] = pw
-    browser = pw.chromium.launch(headless=True)
+    launch_kwargs = {'headless': True}
+    # 显式继承容器代理:Chromium 是否读取 HTTP_PROXY 环境变量随版本/环境漂移,
+    # 不赌默认行为(2026-11-12 排查 wacg51 ERR_CONNECTION_CLOSED 时确认需要)
+    proxy = os.environ.get('HTTPS_PROXY') or os.environ.get('HTTP_PROXY')
+    if proxy:
+        launch_kwargs['proxy'] = {'server': proxy}
+    browser = pw.chromium.launch(**launch_kwargs)
     ctx = browser.new_context(
         user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
                    'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
