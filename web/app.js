@@ -151,9 +151,9 @@
         let errText = '❌ ' + res.error;
         const disc = res.discover;
         if (disc && disc.home_ok === false && disc.suggestion) {
-          errText += ` | 主站疑似失效,候选:${disc.suggestion}`;
+          errText += ` | 主站本轮失败,可切换:${disc.suggestion}`;
         } else if (disc && disc.home_ok === false && !disc.suggestion) {
-          errText += ` | 主站失效且无候选,需人工查回家路`;
+          errText += ' | 主站本轮瞬断,下轮调度自动重试';
         }
         el.textContent = errText;
         el.className = 'sync-site-status error';
